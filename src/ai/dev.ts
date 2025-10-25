@@ -1,4 +1,4 @@
 import { config } from 'dotenv';
 config();
 
-import '@/ai/flows/gdpr-data-discovery.ts';
+import '@/ai/flows/gdpr-data-discovery';

@@ -40,6 +40,17 @@ const prompt = ai.definePrompt({
 
   User ID: {{{userId}}}
 
+  Consider the following Firestore structure:
+  - /users/{userId}
+  - /tenants/{tenantId}/users/{userId}
+  - /tenants/{tenantId}/transactions/{transactionId}
+  - /tenants/{tenantId}/products/{productId}
+  - /global/plans/{planId}
+
+  A user's data might be directly in /users/{userId}, or within a tenant's subcollections.
+  Analyze the collections and infer which documents might be associated with the given userId.
+  For example, a transactionId might contain the userId within it.
+
   Format your output as a JSON object with a 'collections' array. Each object in the array should have 'collectionName' and 'documentIds' fields.
 `,
 });

@@ -1,5 +1,6 @@
 'use client';
 
+import React from 'react';
 import {useActionState} from 'react';
 import {discoverData} from './actions';
 import {Button} from '@/components/ui/button';
@@ -10,32 +11,19 @@ import {Alert, AlertDescription, AlertTitle} from '@/components/ui/alert';
 import {Loader2, AlertCircle, CheckCircle, FileDown, Trash2} from 'lucide-react';
 import {Separator} from '@/components/ui/separator';
 import {Badge} from '@/components/ui/badge';
-import type {GDPRDataDiscoveryOutput} from '@/lib/types';
+
+type GDPRDataDiscoveryOutput = {
+  collections: {
+    collectionName: string;
+    documentIds: string[];
+  }[];
+};
 
 const initialState = {
   message: null,
   data: null,
   error: false,
 };
-
-function SubmitButton() {
-  // This is a simplified way to get the pending state.
-  // In a real app, you might use a more robust form library state.
-  const [isPending, setIsPending] = React.useState(false);
-  React.useEffect(() => {
-    const form = document.querySelector('form');
-    const handleSubmit = () => setIsPending(true);
-    form?.addEventListener('submit', handleSubmit);
-    return () => form?.removeEventListener('submit', handleSubmit);
-  }, []);
-
-  return (
-    <Button type="submit" className="w-full sm:w-auto bg-accent hover:bg-accent/90" disabled={isPending}>
-      {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-      Discover Data
-    </Button>
-  );
-}
 
 function ResultsDisplay({data}: {data: GDPRDataDiscoveryOutput}) {
   return (

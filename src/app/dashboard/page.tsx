@@ -35,14 +35,14 @@ const modules = [
     title: 'User Management',
     description: 'Manage users and their permissions.',
     icon: Users,
-    href: '#',
+    href: '/dashboard/users',
     color: 'text-purple-500',
   },
   {
     title: 'Settings',
     description: 'Configure tenant and system settings.',
     icon: Settings,
-    href: '#',
+    href: '/dashboard/settings',
     color: 'text-gray-500',
   },
 ];
