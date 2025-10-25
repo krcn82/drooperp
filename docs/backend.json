@@ -218,105 +218,39 @@
   },
   "auth": {
     "providers": [
-      "password",
-      "anonymous"
+      "password"
     ]
   },
   "firestore": {
-    "structure": [
-      {
-        "path": "/tenants/{tenantId}",
-        "definition": {
-          "entityName": "Tenant",
-          "schema": {
-            "$ref": "#/backend/entities/Tenant"
-          },
-          "description": "Collection to store tenant information. Each document represents a tenant.",
-          "params": [
-            {
-              "name": "tenantId",
-              "description": "Unique identifier for the tenant."
-            }
-          ]
-        }
+    "/tenants/{tenantId}": {
+      "schema": {
+        "$ref": "#/entities/Tenant"
       },
-      {
-        "path": "/tenants/{tenantId}/users/{userId}",
-        "definition": {
-          "entityName": "User",
-          "schema": {
-            "$ref": "#/backend/entities/User"
-          },
-          "description": "Collection to store user information for a specific tenant. Includes the denormalized 'tenantId' for authorization independence.",
-          "params": [
-            {
-              "name": "tenantId",
-              "description": "Unique identifier for the tenant."
-            },
-            {
-              "name": "userId",
-              "description": "Unique identifier for the user."
-            }
-          ]
-        }
+      "description": "Collection to store tenant information."
+    },
+    "/tenants/{tenantId}/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/User"
       },
-      {
-        "path": "/tenants/{tenantId}/transactions/{transactionId}",
-        "definition": {
-          "entityName": "Transaction",
-          "schema": {
-            "$ref": "#/backend/entities/Transaction"
-          },
-          "description": "Collection to store transaction information for a specific tenant. Includes the denormalized 'tenantId' for authorization independence.",
-          "params": [
-            {
-              "name": "tenantId",
-              "description": "Unique identifier for the tenant."
-            },
-            {
-              "name": "transactionId",
-              "description": "Unique identifier for the transaction."
-            }
-          ]
-        }
+      "description": "Sub-collection for users within a tenant."
+    },
+    "/tenants/{tenantId}/transactions/{transactionId}": {
+      "schema": {
+        "$ref": "#/entities/Transaction"
       },
-      {
-        "path": "/tenants/{tenantId}/products/{productId}",
-        "definition": {
-          "entityName": "Product",
-          "schema": {
-            "$ref": "#/backend/entities/Product"
-          },
-          "description": "Collection to store product information for a specific tenant. Includes the denormalized 'tenantId' for authorization independence.",
-          "params": [
-            {
-              "name": "tenantId",
-              "description": "Unique identifier for the tenant."
-            },
-            {
-              "name": "productId",
-              "description": "Unique identifier for the product."
-            }
-          ]
-        }
+      "description": "Sub-collection for transactions within a tenant."
+    },
+    "/tenants/{tenantId}/products/{productId}": {
+      "schema": {
+        "$ref": "#/entities/Product"
       },
-      {
-        "path": "/global/plans/{planId}",
-        "definition": {
-          "entityName": "Plan",
-          "schema": {
-            "$ref": "#/backend/entities/Plan"
-          },
-          "description": "Collection to store global subscription plan information, accessible to all tenants.",
-          "params": [
-            {
-              "name": "planId",
-              "description": "Unique identifier for the subscription plan."
-            }
-          ]
-        }
-      }
-    ],
-    "reasoning": "This design implements a multi-tenant Firestore structure where data is segregated under `/tenants/{tenantId}`. This approach provides a clear separation of data between different tenants, simplifying security rules and enhancing scalability. Each tenant has its own collections for users, transactions, and products. A global collection `/global/plans` stores subscription plans accessible to all tenants.\n\nAuthorization Independence:\n\n*   Each document under `/tenants/{tenantId}` includes the `tenantId` field. This denormalization allows security rules to verify the tenant context without needing to perform expensive `get()` operations to parent documents. For example, a rule for `/tenants/{tenantId}/users/{userId}` can directly check if `request.auth.uid` exists as a key in the user document's 'roles' map (if roles were stored directly on the User document) or some other field. Alternatively, rules can verify if the user document's 'tenantId' matches the requested `{tenantId}`.\n\nQAPs (Rules are not Filters):\n\n*   The segregation of data into tenant-specific collections ensures that list operations are always performed within a specific tenant's context. Security rules can easily restrict access to resources based on the `tenantId` in the path, preventing unauthorized access to other tenants' data. The global plans collection is explicitly defined for shared resources, allowing for different security rules to be applied as needed. For `list` requests, the rules can simply verify that `request.auth.uid` exists and that the requested `tenantId` matches the user's associated tenant. This avoids filtering and ensures that only authorized data is returned."
+      "description": "Sub-collection for products within a tenant."
+    },
+    "/global/plans/{planId}": {
+      "schema": {
+        "$ref": "#/entities/Plan"
+      },
+      "description": "Global collection for subscription plans."
+    }
   }
 }

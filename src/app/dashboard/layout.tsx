@@ -11,22 +11,17 @@ import {
   ShoppingCart,
   Users,
 } from 'lucide-react';
-import {usePathname} from 'next/navigation';
+import {usePathname, useRouter} from 'next/navigation';
 
 import {Button} from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import {Input} from '@/components/ui/input';
 import {Sheet, SheetContent, SheetTrigger} from '@/components/ui/sheet';
 import {cn} from '@/lib/utils';
 import {UserNav} from '@/components/common/user-nav';
 import {Database} from 'lucide-react';
+import { useAuth } from '@/firebase';
+import { useEffect } from 'react';
+import { onAuthStateChanged } from 'firebase/auth';
 
 const navItems = [
   {href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard'},
@@ -40,6 +35,19 @@ const navItems = [
 
 export default function DashboardLayout({children}: {children: React.ReactNode}) {
   const pathname = usePathname();
+  const auth = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!auth) return;
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (!user) {
+        router.push('/login');
+      }
+    });
+
+    return () => unsubscribe();
+  }, [auth, router]);
 
   const NavLink = ({href, icon: Icon, label, mobile = false}: (typeof navItems)[0] & {mobile?: boolean}) => (
     <Link

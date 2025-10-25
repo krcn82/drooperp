@@ -1,8 +1,11 @@
+'use client';
+
 import type {Metadata} from 'next';
 import {Inter, Space_Grotesk} from 'next/font/google';
 import './globals.css';
 import {cn} from '@/lib/utils';
 import {Toaster} from '@/components/ui/toaster';
+import {FirebaseClientProvider} from '@/firebase';
 
 const fontBody = Inter({
   subsets: ['latin'],
@@ -14,10 +17,12 @@ const fontHeadline = Space_Grotesk({
   variable: '--font-headline',
 });
 
-export const metadata: Metadata = {
-  title: 'Droop ERP',
-  description: 'A complete scalable ERP system built with Firebase.',
-};
+// This can't be a metadata export.
+// See: https://nextjs.org/docs/app/api-reference/file-conventions/metadata#unsupported-metadata
+// export const metadata: Metadata = {
+//   title: 'Droop ERP',
+//   description: 'A complete scalable ERP system built with Firebase.',
+// };
 
 export default function RootLayout({
   children,
@@ -27,8 +32,10 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={cn('font-body antialiased', fontBody.variable, fontHeadline.variable)}>
-        {children}
-        <Toaster />
+        <FirebaseClientProvider>
+          {children}
+          <Toaster />
+        </FirebaseClientProvider>
       </body>
     </html>
   );
