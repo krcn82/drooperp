@@ -214,6 +214,19 @@
         "startDate",
         "endDate"
       ]
+    },
+    "UserTenant": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "UserTenant",
+      "type": "object",
+      "description": "Maps a user's UID to their tenant ID.",
+      "properties": {
+        "tenantId": {
+          "type": "string",
+          "description": "The ID of the tenant the user belongs to."
+        }
+      },
+      "required": ["tenantId"]
     }
   },
   "auth": {
@@ -222,6 +235,12 @@
     ]
   },
   "firestore": {
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserTenant"
+      },
+      "description": "Top-level collection to map user UIDs to tenant IDs for security rules."
+    },
     "/tenants/{tenantId}": {
       "schema": {
         "$ref": "#/entities/Tenant"

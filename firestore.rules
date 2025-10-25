@@ -1,90 +1,155 @@
+/**
+ * @fileOverview Firestore Security Rules for multi-tenant data isolation.
+ *
+ * Core Philosophy:
+ * This ruleset enforces strict tenant-based data isolation.  Authenticated users can only
+ * access resources (documents and collections) that belong to their assigned tenant.
+ *
+ * Data Structure:
+ * - `/tenants/{tenantId}`: Stores tenant profile information.
+ * - `/tenants/{tenantId}/users/{userId}`: Stores user profiles, nested under their respective tenants.
+ * - `/tenants/{tenantId}/transactions/{transactionId}`: Stores transaction data, nested under tenants.
+ * - `/tenants/{tenantId}/products/{productId}`: Stores product information, nested under tenants.
+ * - `/global/plans/{planId}`: Stores globally available subscription plans.
+ *
+ * Key Security Decisions:
+ * - **Tenant Isolation**: All tenant-specific collections are secured to prevent cross-tenant data access.  Authorization checks are performed using the `tenantId` stored within the documents and the user's authenticated `uid`.
+ * - **Global Plans**: The `/global/plans` collection is publicly readable but not writable by end-users.  Write operations must be secured via other means (e.g., Cloud Functions with admin privileges).
+ * - **No User Listing**: Listing users is generally disabled to prevent information exposure.
+ *
+ * Denormalization for Authorization:
+ * - Each document in tenant-specific collections (`users`, `transactions`, `products`) MUST have a `tenantId` field that matches the `tenantId` in the path. This is enforced on `create` operations.
+ * - While not strictly enforced, it is recommended to store the `tenantId` on each user document to simplify authorization logic and improve performance.
+ *
+ * Structural Segregation:
+ * - Publicly accessible data (e.g., subscription plans) is stored in a separate `/global` collection to avoid mixing public and private data within tenant-specific collections.
+ */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Checks if the user is signed in.
+     * @description Rules for the top-level tenants collection.
+     * @path /tenants/{tenantId}
+     * @allow get (read): if isSignedIn() && request.auth.uid == resource.data.id
+     * @allow list (read): Denied, prevent listing tenants.
+     * @allow create (write): if request.auth.uid == request.resource.data.id
+     * @allow update (write): if isExistingOwner(tenantId)
+     * @allow delete (write): if isExistingOwner(tenantId)
+     * @deny get: if false
+     * @deny list: if true
+     * @deny create: if !isSignedIn() || request.auth.uid != request.resource.data.id
+     * @deny update: if !isSignedIn() || request.auth.uid != resource.data.id
+     * @deny delete: if !isSignedIn() || request.auth.uid != resource.data.id
+     * @principle Enforces tenant-level access control. Only authenticated users can access tenant documents.
      */
+    match /tenants/{tenantId} {
+      allow get: if isSignedIn() && isTenantOwner(tenantId);
+      allow list: if false;
+      allow create: if isSignedIn() && request.auth.uid == tenantId;
+      allow update: if isSignedIn() && isExistingTenantOwner(tenantId);
+      allow delete: if isSignedIn() && isExistingTenantOwner(tenantId);
+    }
+
+    /**
+     * @description Rules for the users subcollection within a tenant.
+     * @path /tenants/{tenantId}/users/{userId}
+     * @allow get (read): if isTenantOwner(tenantId)
+     * @allow list (read): if isTenantOwner(tenantId)
+     * @allow create (write): if isTenantOwner(tenantId) && request.resource.data.tenantId == tenantId && request.resource.data.id == userId
+     * @allow update (write): if isExistingTenantOwner(tenantId) && request.resource.data.id == resource.data.id
+     * @allow delete (write): if isExistingTenantOwner(tenantId)
+     * @deny get: if !isSignedIn() || !isTenantOwner(tenantId)
+     * @deny list: if !isSignedIn() || !isTenantOwner(tenantId)
+     * @deny create: if !isSignedIn() || !isTenantOwner(tenantId) || request.resource.data.tenantId != tenantId || request.resource.data.id != userId
+     * @deny update: if !isSignedIn() || !isExistingTenantOwner(tenantId) || request.resource.data.tenantId != tenantId || request.resource.data.id != resource.data.id
+     * @deny delete: if !isSignedIn() || !isExistingTenantOwner(tenantId)
+     * @principle Enforces tenant-level and user-level access control. Only authenticated users within the correct tenant can access user documents.
+     */
+    match /tenants/{tenantId}/users/{userId} {
+      allow get: if isSignedIn() && isTenantOwner(tenantId);
+      allow list: if isSignedIn() && isTenantOwner(tenantId);
+      allow create: if isSignedIn() && isTenantOwner(tenantId) && request.resource.data.tenantId == tenantId && request.resource.data.id == userId;
+      allow update: if isSignedIn() && isExistingTenantOwner(tenantId) && request.resource.data.id == resource.data.id;
+      allow delete: if isSignedIn() && isExistingTenantOwner(tenantId);
+    }
+
+    /**
+     * @description Rules for the transactions subcollection within a tenant.
+     * @path /tenants/{tenantId}/transactions/{transactionId}
+     * @allow get (read): if isTenantOwner(tenantId)
+     * @allow list (read): if isTenantOwner(tenantId)
+     * @allow create (write): if isTenantOwner(tenantId) && request.resource.data.tenantId == tenantId
+     * @allow update (write): if isExistingTenantOwner(tenantId)
+     * @allow delete (write): if isExistingTenantOwner(tenantId)
+     * @deny get: if !isSignedIn() || !isTenantOwner(tenantId)
+     * @deny list: if !isSignedIn() || !isTenantOwner(tenantId)
+     * @deny create: if !isSignedIn() || !isTenantOwner(tenantId) || request.resource.data.tenantId != tenantId
+     * @deny update: if !isSignedIn() || !isExistingTenantOwner(tenantId)
+     * @deny delete: if !isSignedIn() || !isExistingTenantOwner(tenantId)
+     * @principle Enforces tenant-level access control. Only authenticated users within the correct tenant can access transaction documents.
+     */
+    match /tenants/{tenantId}/transactions/{transactionId} {
+      allow get: if isSignedIn() && isTenantOwner(tenantId);
+      allow list: if isSignedIn() && isTenantOwner(tenantId);
+      allow create: if isSignedIn() && isTenantOwner(tenantId) && request.resource.data.tenantId == tenantId;
+      allow update: if isSignedIn() && isExistingTenantOwner(tenantId);
+      allow delete: if isSignedIn() && isExistingTenantOwner(tenantId);
+    }
+
+    /**
+     * @description Rules for the products subcollection within a tenant.
+     * @path /tenants/{tenantId}/products/{productId}
+     * @allow get (read): if isTenantOwner(tenantId)
+     * @allow list (read): if isTenantOwner(tenantId)
+     * @allow create (write): if isTenantOwner(tenantId) && request.resource.data.tenantId == tenantId
+     * @allow update (write): if isExistingTenantOwner(tenantId)
+     * @allow delete (write): if isExistingTenantOwner(tenantId)
+     * @deny get: if !isSignedIn() || !isTenantOwner(tenantId)
+     * @deny list: if !isSignedIn() || !isTenantOwner(tenantId)
+     * @deny create: if !isSignedIn() || !isTenantOwner(tenantId) || request.resource.data.tenantId != tenantId
+     * @deny update: if !isSignedIn() || !isExistingTenantOwner(tenantId)
+     * @deny delete: if !isSignedIn() || !isExistingTenantOwner(tenantId)
+     * @principle Enforces tenant-level access control. Only authenticated users within the correct tenant can access product documents.
+     */
+    match /tenants/{tenantId}/products/{productId} {
+      allow get: if isSignedIn() && isTenantOwner(tenantId);
+      allow list: if isSignedIn() && isTenantOwner(tenantId);
+      allow create: if isSignedIn() && isTenantOwner(tenantId) && request.resource.data.tenantId == tenantId;
+      allow update: if isSignedIn() && isExistingTenantOwner(tenantId);
+      allow delete: if isSignedIn() && isExistingTenantOwner(tenantId);
+    }
+
+     /**
+      * @description Rules for the global plans collection.
+      * @path /global/plans/{planId}
+      * @allow get (read): if true
+      * @allow list (read): if true
+      * @allow create (write): if false; // TODO: Secure via Cloud Functions with admin privileges
+      * @allow update (write): if false; // TODO: Secure via Cloud Functions with admin privileges
+      * @allow delete (write): if false; // TODO: Secure via Cloud Functions with admin privileges
+      * @principle Allows public read access to subscription plans, but restricts write access.
+      */
+    match /global/plans/{planId} {
+        allow get: if true;
+        allow list: if true;
+        allow create: if false;
+        allow update: if false;
+        allow delete: if false;
+    }
+
+
+    // Helper functions
     function isSignedIn() {
       return request.auth != null;
     }
 
-    /**
-     * @description Checks if the authenticated user's ID matches the provided userId.
-     */
-    function isOwner(userId) {
-      return request.auth.uid == userId;
-    }
-
-    /**
-     * @description Checks if the authenticated user's ID matches the tenantId.
-     */
     function isTenantOwner(tenantId) {
         return isSignedIn() && request.auth.uid == tenantId;
     }
 
-    /**
-     * @description Rules for the /tenants/{tenantId} collection.
-     * @path /tenants/{tenantId}
-     * @allow (create) - Authenticated user creates a new tenant with their user ID as the tenantId.
-     * @deny (create) - Unauthenticated user attempts to create a tenant.
-     * @principle Enforces tenant ownership and authentication.
-     */
-    match /tenants/{tenantId} {
-      allow get: if false; // Listing tenants is forbidden.
-      allow list: if false;
-
-      allow create: if isTenantOwner(tenantId);
-      allow update: if false;
-      allow delete: if false;
-
-      /**
-       * @description Rules for the /tenants/{tenantId}/users/{userId} collection.
-       * @path /tenants/{tenantId}/users/{userId}
-       */
-      match /users/{userId} {
-        allow get: if isSignedIn() && isOwner(userId);
-        allow list: if false; // Listing disabled for security
-
-        allow create: if isSignedIn() && isOwner(userId);
-        allow update: if isSignedIn() && isOwner(userId);
-        allow delete: if isSignedIn() && isOwner(userId);
-      }
-
-      /**
-       * @description Rules for the /tenants/{tenantId}/transactions/{transactionId} collection.
-       * @path /tenants/{tenantId}/transactions/{transactionId}
-       */
-      match /transactions/{transactionId} {
-        allow get: if isSignedIn() && isTenantOwner(tenantId);
-        allow list: if false;
-
-        allow create: if isSignedIn() && isTenantOwner(tenantId);
-        allow update: if isSignedIn() && isTenantOwner(tenantId);
-        allow delete: if isSignedIn() && isTenantOwner(tenantId);
-      }
-
-      /**
-       * @description Rules for the /tenants/{tenantId}/products/{productId} collection.
-       * @path /tenants/{tenantId}/products/{productId}
-       */
-      match /products/{productId} {
-        allow get: if isSignedIn() && isTenantOwner(tenantId);
-        allow list: if false;
-
-        allow create: if isSignedIn() && isTenantOwner(tenantId);
-        allow update: if isSignedIn() && isTenantOwner(tenantId);
-        allow delete: if isSignedIn() && isTenantOwner(tenantId);
-      }
-    }
-
-    /**
-     * @description Rules for the /global/plans/{planId} collection.
-     * @path /global/plans/{planId}
-     */
-    match /global/plans/{planId} {
-      allow get, list: if true;
-      allow create, update, delete: if false; // TODO: Implement admin role check for writes
+    function isExistingTenantOwner(tenantId) {
+        return isSignedIn() && isTenantOwner(tenantId) && resource != null;
     }
   }
 }

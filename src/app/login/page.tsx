@@ -10,12 +10,13 @@ import {useForm} from 'react-hook-form';
 import {zodResolver} from '@hookform/resolvers/zod';
 import {z} from 'zod';
 import {useRouter} from 'next/navigation';
-import {initiateEmailSignIn, useAuth} from '@/firebase';
+import {initiateEmailSignIn, useAuth, useFirestore, setDocumentNonBlocking} from '@/firebase';
 import {Form, FormControl, FormField, FormItem, FormLabel, FormMessage} from '@/components/ui/form';
 import {useToast} from '@/hooks/use-toast';
 import {useEffect} from 'react';
 import {FirebaseError} from 'firebase/app';
 import { onAuthStateChanged } from 'firebase/auth';
+import { doc } from 'firebase/firestore';
 
 const formSchema = z.object({
   tenantId: z.string().min(1, 'Tenant ID is required'),
@@ -27,6 +28,7 @@ type LoginFormValues = z.infer<typeof formSchema>;
 
 export default function LoginPage() {
   const auth = useAuth();
+  const firestore = useFirestore();
   const router = useRouter();
   const {toast} = useToast();
 
@@ -44,23 +46,28 @@ export default function LoginPage() {
   } = form;
   
   useEffect(() => {
-    if (!auth) return;
+    if (!auth || !firestore) return;
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
+        // Associate user with tenant in Firestore for security rules
+        const userTenantRef = doc(firestore, 'users', user.uid);
+        const tenantId = localStorage.getItem('tenantId');
+        if (tenantId) {
+          setDocumentNonBlocking(userTenantRef, { tenantId }, { merge: true });
+        }
         router.push('/dashboard');
       }
     });
 
     return () => unsubscribe();
-  }, [auth, router]);
+  }, [auth, firestore, router]);
 
   const onSubmit = async (values: LoginFormValues) => {
     try {
-      await initiateEmailSignIn(auth, values.email, values.password);
-      // The onAuthStateChanged listener will handle the redirect
-      // For multi-tenant, we might store tenantId in a custom claim or Firestore
-      // For now, we'll just proceed to the dashboard. We can also store it in local storage.
+      // Store tenantId in localStorage before initiating sign-in
+      // The onAuthStateChanged listener will handle the Firestore write and redirect
       localStorage.setItem('tenantId', values.tenantId);
+      await initiateEmailSignIn(auth, values.email, values.password);
     } catch (error: any) {
       console.error('Login Error:', error);
       let title = 'An unexpected error occurred.';
