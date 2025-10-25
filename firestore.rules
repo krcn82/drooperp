@@ -1,0 +1,90 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /**
+     * @description Checks if the user is signed in.
+     */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    /**
+     * @description Checks if the authenticated user's ID matches the provided userId.
+     */
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    /**
+     * @description Checks if the authenticated user's ID matches the tenantId.
+     */
+    function isTenantOwner(tenantId) {
+        return isSignedIn() && request.auth.uid == tenantId;
+    }
+
+    /**
+     * @description Rules for the /tenants/{tenantId} collection.
+     * @path /tenants/{tenantId}
+     * @allow (create) - Authenticated user creates a new tenant with their user ID as the tenantId.
+     * @deny (create) - Unauthenticated user attempts to create a tenant.
+     * @principle Enforces tenant ownership and authentication.
+     */
+    match /tenants/{tenantId} {
+      allow get: if false; // Listing tenants is forbidden.
+      allow list: if false;
+
+      allow create: if isTenantOwner(tenantId);
+      allow update: if false;
+      allow delete: if false;
+
+      /**
+       * @description Rules for the /tenants/{tenantId}/users/{userId} collection.
+       * @path /tenants/{tenantId}/users/{userId}
+       */
+      match /users/{userId} {
+        allow get: if isSignedIn() && isOwner(userId);
+        allow list: if false; // Listing disabled for security
+
+        allow create: if isSignedIn() && isOwner(userId);
+        allow update: if isSignedIn() && isOwner(userId);
+        allow delete: if isSignedIn() && isOwner(userId);
+      }
+
+      /**
+       * @description Rules for the /tenants/{tenantId}/transactions/{transactionId} collection.
+       * @path /tenants/{tenantId}/transactions/{transactionId}
+       */
+      match /transactions/{transactionId} {
+        allow get: if isSignedIn() && isTenantOwner(tenantId);
+        allow list: if false;
+
+        allow create: if isSignedIn() && isTenantOwner(tenantId);
+        allow update: if isSignedIn() && isTenantOwner(tenantId);
+        allow delete: if isSignedIn() && isTenantOwner(tenantId);
+      }
+
+      /**
+       * @description Rules for the /tenants/{tenantId}/products/{productId} collection.
+       * @path /tenants/{tenantId}/products/{productId}
+       */
+      match /products/{productId} {
+        allow get: if isSignedIn() && isTenantOwner(tenantId);
+        allow list: if false;
+
+        allow create: if isSignedIn() && isTenantOwner(tenantId);
+        allow update: if isSignedIn() && isTenantOwner(tenantId);
+        allow delete: if isSignedIn() && isTenantOwner(tenantId);
+      }
+    }
+
+    /**
+     * @description Rules for the /global/plans/{planId} collection.
+     * @path /global/plans/{planId}
+     */
+    match /global/plans/{planId} {
+      allow get, list: if true;
+      allow create, update, delete: if false; // TODO: Implement admin role check for writes
+    }
+  }
+}
