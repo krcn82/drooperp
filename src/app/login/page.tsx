@@ -16,7 +16,7 @@ import {useToast} from '@/hooks/use-toast';
 import {useEffect} from 'react';
 import {FirebaseError} from 'firebase/app';
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 
 const formSchema = z.object({
   tenantId: z.string().min(1, 'Tenant ID is required'),
@@ -47,30 +47,42 @@ export default function LoginPage() {
   
   useEffect(() => {
     if (!auth || !firestore) return;
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+  
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        // Associate user with tenant in Firestore for security rules
-        const userTenantRef = doc(firestore, 'users', user.uid);
         const tenantId = localStorage.getItem('tenantId');
         if (tenantId) {
+          // 1. Associate user with tenant for security rules
+          const userTenantRef = doc(firestore, 'users', user.uid);
           setDocumentNonBlocking(userTenantRef, { tenantId }, { merge: true });
+  
+          // 2. Check if tenant document exists, if not, create it
+          const tenantRef = doc(firestore, 'tenants', tenantId);
+          const tenantDoc = await getDoc(tenantRef);
+  
+          if (!tenantDoc.exists()) {
+            // Tenant does not exist, create it with default values
+            const newTenantData = {
+              id: tenantId,
+              name: `${tenantId}'s Company`, // Default name
+              domain: `${tenantId}.example.com`, // Default domain
+              subscriptionId: null, // No subscription initially
+            };
+            setDocumentNonBlocking(tenantRef, newTenantData, {});
+          }
         }
         router.push('/dashboard');
       }
     });
-
+  
     return () => unsubscribe();
   }, [auth, firestore, router]);
 
   const onSubmit = async (values: LoginFormValues) => {
-    // This function will be non-blocking. We need to handle the sign-in result
-    // via onAuthStateChanged or by handling the promise rejection for login errors.
     localStorage.setItem('tenantId', values.tenantId);
 
     try {
       await initiateEmailSignIn(auth, values.email, values.password);
-      // Successful call to initiate sign-in doesn't mean it succeeded.
-      // We wait for onAuthStateChanged to redirect.
     } catch (error: any) {
       console.error('Login Error:', error);
       let title = 'An unexpected error occurred.';
@@ -100,10 +112,7 @@ export default function LoginPage() {
         title: title,
         description: description,
       });
-      // Since react-hook-form is managing the submitting state, and our sign-in
-      // is non-blocking, we may need to manually reset the form's submitting state
-      // if the framework doesn't do it automatically on error.
-      form.reset(values); // Keep form values
+      form.reset(values); 
     }
   };
 
