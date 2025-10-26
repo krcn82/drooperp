@@ -1,78 +1,123 @@
 'use client';
 
-import React from 'react';
-import { useActionState } from 'react';
-import { updateSettings } from './actions';
+import React, { useState } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, AlertCircle, CheckCircle } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+import { User, Shield, CreditCard, Users as UsersIcon, Bell } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
-const initialState = {
-  message: null,
-  error: false,
-};
+// Placeholder components for each settings section
+const AccountSettings = () => (
+  <Card>
+    <CardHeader>
+      <CardTitle>Account</CardTitle>
+      <CardDescription>Manage your personal account details.</CardDescription>
+    </CardHeader>
+    <CardContent>
+      <p>Account settings form will go here.</p>
+    </CardContent>
+  </Card>
+);
+
+const SubscriptionSettings = () => (
+  <Card>
+    <CardHeader>
+      <CardTitle>Subscription</CardTitle>
+      <CardDescription>Manage your billing and subscription plan.</CardDescription>
+    </CardHeader>
+    <CardContent>
+      <p>Subscription management interface will go here.</p>
+    </CardContent>
+  </Card>
+);
+
+const UsersSettings = () => (
+    <Card>
+      <CardHeader>
+        <CardTitle>Users</CardTitle>
+        <CardDescription>Manage users, roles, and permissions.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <p>User management table and invitation forms will go here.</p>
+      </CardContent>
+    </Card>
+  );
+
+const PrivacySettings = () => (
+    <Card>
+      <CardHeader>
+        <CardTitle>Data Privacy (DSGVO / GDPR)</CardTitle>
+        <CardDescription>Manage your data and privacy settings.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <p>Data export and deletion tools will go here.</p>
+      </CardContent>
+    </Card>
+  );
+
+
+type SettingsView = 'account' | 'subscription' | 'users' | 'privacy';
+
+const settingsNav = [
+    { id: 'account', label: 'Account', icon: User },
+    { id: 'subscription', label: 'Subscription', icon: CreditCard },
+    { id: 'users', label: 'Users', icon: UsersIcon },
+    { id: 'privacy', label: 'Data Privacy (DSGVO)', icon: Shield },
+] as const;
+
 
 export default function SettingsPage() {
-  const [state, formAction, isPending] = useActionState(updateSettings, initialState);
-  const { toast } = useToast();
+  const [activeView, setActiveView] = useState<SettingsView>('account');
 
-  React.useEffect(() => {
-    if (state?.message) {
-      toast({
-        title: state.error ? 'Error' : 'Success',
-        description: state.message,
-        variant: state.error ? 'destructive' : 'default',
-      });
+  const renderContent = () => {
+    switch (activeView) {
+      case 'account':
+        return <AccountSettings />;
+      case 'subscription':
+        return <SubscriptionSettings />;
+      case 'users':
+        return <UsersSettings />;
+      case 'privacy':
+        return <PrivacySettings />;
+      default:
+        return <AccountSettings />;
     }
-  }, [state, toast]);
+  };
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-3xl font-bold font-headline tracking-tight">Tenant Settings</h1>
-      <Card className="max-w-2xl">
-        <form action={formAction}>
-          <CardHeader>
-            <CardTitle>Company Information</CardTitle>
-            <CardDescription>Manage your organization's details and branding.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="company-name">Company Name</Label>
-              <Input id="company-name" name="companyName" placeholder="Your Company LLC" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="theme-color">Theme Color</Label>
-              <Select name="themeColor">
-                <SelectTrigger id="theme-color">
-                  <SelectValue placeholder="Select a theme" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="default">Default</SelectItem>
-                  <SelectItem value="blue">Blue</SelectItem>
-                  <SelectItem value="green">Green</SelectItem>
-                  <SelectItem value="orange">Orange</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </CardContent>
-          <CardFooter>
-            <Button type="submit" disabled={isPending}>
-              {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Save Settings
-            </Button>
-          </CardFooter>
-        </form>
-      </Card>
-
-      {state?.message && !isPending && (
-        <div className={`mt-4 text-sm font-medium ${state.error ? 'text-destructive' : 'text-primary'}`}>
-            {state.message}
+        <div className="flex items-center justify-between">
+            <h1 className="text-3xl font-bold font-headline tracking-tight">Settings</h1>
+            {/* In a real app, tenantName would come from context or a hook */}
+            <span className="text-muted-foreground">Droop Inc.</span>
         </div>
-      )}
+
+        <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] lg:grid-cols-[250px_1fr] gap-8 items-start">
+            {/* Sidebar */}
+            <Card className="p-4 md:p-2 bg-muted/50 md:bg-transparent md:border-none md:shadow-none">
+                <nav className="flex flex-row md:flex-col gap-2">
+                    {settingsNav.map((item) => (
+                         <Button
+                            key={item.id}
+                            variant="ghost"
+                            onClick={() => setActiveView(item.id)}
+                            className={cn(
+                                'w-full justify-start text-base md:text-sm',
+                                activeView === item.id && 'bg-accent text-accent-foreground'
+                            )}
+                         >
+                            <item.icon className="mr-2 h-4 w-4" />
+                            <span className="truncate">{item.label}</span>
+                         </Button>
+                    ))}
+                </nav>
+            </Card>
+
+            {/* Content */}
+            <div className="md:col-start-2">
+                {renderContent()}
+            </div>
+        </div>
     </div>
   );
 }
