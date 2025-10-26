@@ -63,15 +63,19 @@ export default function LoginPage() {
   }, [auth, firestore, router]);
 
   const onSubmit = async (values: LoginFormValues) => {
+    // This function will be non-blocking. We need to handle the sign-in result
+    // via onAuthStateChanged or by handling the promise rejection for login errors.
+    localStorage.setItem('tenantId', values.tenantId);
+
     try {
-      // Store tenantId in localStorage before initiating sign-in
-      // The onAuthStateChanged listener will handle the Firestore write and redirect
-      localStorage.setItem('tenantId', values.tenantId);
       await initiateEmailSignIn(auth, values.email, values.password);
+      // Successful call to initiate sign-in doesn't mean it succeeded.
+      // We wait for onAuthStateChanged to redirect.
     } catch (error: any) {
       console.error('Login Error:', error);
       let title = 'An unexpected error occurred.';
       let description = 'Please try again later.';
+
       if (error instanceof FirebaseError) {
         switch (error.code) {
           case 'auth/user-not-found':
@@ -84,13 +88,22 @@ export default function LoginPage() {
             title = 'Invalid Email';
             description = 'Please enter a valid email address.';
             break;
+          case 'auth/too-many-requests':
+            title = 'Too Many Attempts';
+            description = 'Access to this account has been temporarily disabled due to many failed login attempts. You can immediately restore it by resetting your password or you can try again later.';
+            break;
         }
       }
+
       toast({
         variant: 'destructive',
         title: title,
         description: description,
       });
+      // Since react-hook-form is managing the submitting state, and our sign-in
+      // is non-blocking, we may need to manually reset the form's submitting state
+      // if the framework doesn't do it automatically on error.
+      form.reset(values); // Keep form values
     }
   };
 
