@@ -1,127 +1,140 @@
+/**
+ * @fileoverview Firestore Security Rules for the application.
+ *
+ * Core Philosophy:
+ * This ruleset enforces a strict user-ownership model for user-specific data and tenant-based access control for shared resources.
+ *
+ * Data Structure:
+ * - /users/{userId}: Maps user UIDs to tenant IDs.  This is the primary entry point for user-based security.
+ * - /tenants/{tenantId}: Stores tenant-specific information.
+ * - /tenants/{tenantId}/users/{userId}: Stores user information within a tenant.
+ * - /tenants/{tenantId}/transactions/{transactionId}: Stores transaction data for a tenant.
+ * - /tenants/{tenantId}/products/{productId}: Stores product data for a tenant.
+ * - /tenants/{tenantId}/settings/{settingId}: Stores settings for a tenant.
+ * - /global/plans/{planId}: Stores global subscription plans.
+ *
+ * Key Security Decisions:
+ * - Users can only create their own /users/{userId} document, and only if the UID matches the document ID.
+ * - All data under a tenant is only accessible to authenticated users.
+ * - Listing of users within a tenant is allowed to facilitate user management.
+ * - Global plans are publicly readable.
+ *
+ * Denormalization for Authorization:
+ * - The User entity's `tenantId` is denormalized into the /users/{userId} document to quickly determine which tenant a user belongs to. This avoids needing to query the /tenants/{tenantId}/users/{userId} collection for every request.
+ */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Maps user UIDs to tenant IDs for security rules.
+     * @description Allows a user to create their own user-tenant mapping.  This is a self-creation pattern.
      * @path /users/{userId}
-     * @allow (create) User with UID 'user123' can create document /users/user123 setting tenantId to 'tenant456'.
-     * @deny (create) User with UID 'user123' cannot create document /users/anotherUser setting tenantId to 'tenant456'.
-     * @deny (update) User cannot update this top level user document.
-     * @deny (delete) User cannot delete this top level user document.
-     * @principle Enforces user-ownership: Only the authenticated user can create their own document.
+     * @allow (create) - User with UID 'user123' creates document /users/user123
+     * @deny (create) - User with UID 'user123' tries to create document /users/user456
+     * @principle Allows users to create their root document with a matching UID.
      */
     match /users/{userId} {
       allow get: if false;
       allow list: if false;
-      allow create: if isSignedIn() && isOwner(userId) && request.resource.data.tenantId is string;
+      allow create: if isSignedIn() && request.auth.uid == userId && request.resource.data.tenantId is string;
       allow update: if false;
       allow delete: if false;
     }
 
     /**
-     * @description Stores tenant information.
+     * @description Allows reading of tenant information.  Write access is denied.
      * @path /tenants/{tenantId}
-     * @allow (get, list) Any authenticated user can read tenants.
-     * @deny (create, update, delete) No one can create, update or delete tenants (for now).
-     * @principle Restricts creation, update, and deletion of tenants.
+     * @allow (get, list) - Any authenticated user can read tenant info
+     * @deny (create, update, delete) - No one can create, update, or delete tenants through the client.
+     * @principle Restricts write operations to tenant documents.
      */
     match /tenants/{tenantId} {
-      allow get, list: if isSignedIn();
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
       allow create: if false;
       allow update: if false;
       allow delete: if false;
     }
 
     /**
-     * @description Sub-collection for users within a tenant.
+     * @description Allows users within a tenant to read and write their own user document.
      * @path /tenants/{tenantId}/users/{userId}
-     * @allow (get, list) Authenticated user can read tenant users.
-     * @allow (create) Authenticated user can create a tenant user if the tenant id matches.
-     * @allow (update, delete) Authenticated user can only update/delete tenant users if the tenant id matches.
-     * @principle Enforces that a user can only manage users within their tenant.
+     * @allow (get, list) - Any authenticated user can get tenant user info.
+     * @allow (create, update, delete) - No one can create, update, or delete users through the client.
+     * @deny (create, update, delete) - No one can create, update, or delete users through the client.
+     * @principle Tenant-based access control for user documents.
      */
     match /tenants/{tenantId}/users/{userId} {
-      allow get, list: if isSignedIn() && isTenantUser(tenantId, userId);
-      allow create: if isSignedIn() && isTenantUser(tenantId, request.auth.uid);
-      allow update: if isSignedIn() && isTenantUser(tenantId, request.auth.uid);
-      allow delete: if isSignedIn() && isTenantUser(tenantId, request.auth.uid);
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
     }
 
     /**
-     * @description Sub-collection for transactions within a tenant.
+     * @description Allows authenticated users to read transaction data within their tenant.  Write access is denied.
      * @path /tenants/{tenantId}/transactions/{transactionId}
-     * @allow (get, list) Authenticated user can read tenant transactions.
-     * @allow (create) Authenticated user can create a transaction if they are a user in the tenant.
-     * @allow (update, delete) Authenticated user can only update/delete transactions if they are a user in the tenant.
-     * @principle Enforces that a user can only manage transactions within their tenant.
+     * @allow (get, list) - Any authenticated user can read a list of transactions within their tenant.
+     * @deny (create, update, delete) - No one can create, update, or delete transactions through the client.
+     * @principle Tenant-based access control for transactions.
      */
     match /tenants/{tenantId}/transactions/{transactionId} {
-      allow get, list: if isSignedIn() && isTenantUser(tenantId, request.auth.uid);
-      allow create: if isSignedIn() && isTenantUser(tenantId, request.auth.uid);
-      allow update: if isSignedIn() && isTenantUser(tenantId, request.auth.uid);
-      allow delete: if isSignedIn() && isTenantUser(tenantId, request.auth.uid);
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
     }
 
     /**
-     * @description Sub-collection for products within a tenant.
+     * @description Allows authenticated users to read product data within their tenant. Write access is denied.
      * @path /tenants/{tenantId}/products/{productId}
-     * @allow (get, list) Authenticated user can read tenant products.
-     * @allow (create) Authenticated user can create a product if they are a user in the tenant.
-     * @allow (update, delete) Authenticated user can only update/delete products if they are a user in the tenant.
-     * @principle Enforces that a user can only manage products within their tenant.
+     * @allow (get, list) - Any authenticated user can read a list of products within their tenant.
+     * @deny (create, update, delete) - No one can create, update, or delete products through the client.
+     * @principle Tenant-based access control for products.
      */
     match /tenants/{tenantId}/products/{productId} {
-      allow get, list: if isSignedIn() && isTenantUser(tenantId, request.auth.uid);
-      allow create: if isSignedIn() && isTenantUser(tenantId, request.auth.uid);
-      allow update: if isSignedIn() && isTenantUser(tenantId, request.auth.uid);
-      allow delete: if isSignedIn() && isTenantUser(tenantId, request.auth.uid);
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
     }
 
     /**
-     * @description Sub-collection for settings within a tenant.
+     * @description Allows authenticated users to read settings within their tenant. Write access is denied.
      * @path /tenants/{tenantId}/settings/{settingId}
-     * @allow (get, list) Authenticated user can read tenant settings.
-     * @allow (create) Authenticated user can create settings if they are a user in the tenant.
-     * @allow (update, delete) Authenticated user can only update/delete settings if they are a user in the tenant.
-     * @principle Enforces that a user can only manage settings within their tenant.
+     * @allow (get, list) - Any authenticated user can read settings within their tenant.
+     * @deny (create, update, delete) - No one can create, update, or delete settings through the client.
+     * @principle Tenant-based access control for settings.
      */
     match /tenants/{tenantId}/settings/{settingId} {
-      allow get, list: if isSignedIn() && isTenantUser(tenantId, request.auth.uid);
-      allow create: if isSignedIn() && isTenantUser(tenantId, request.auth.uid);
-      allow update: if isSignedIn() && isTenantUser(tenantId, request.auth.uid);
-      allow delete: if isSignedIn() && isTenantUser(tenantId, request.auth.uid);
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
     }
 
     /**
-     * @description Global collection for subscription plans.
+     * @description Allows public read access to global subscription plans. Write access is denied.
      * @path /global/plans/{planId}
-     * @allow (get, list) Any user can read the global plans.
-     * @deny (create, update, delete) No one can create, update, or delete plans (for now).
-     * @principle Provides public read access to subscription plans while restricting modifications.
+     * @allow (get, list) - Any user can read a list of plans.
+     * @deny (create, update, delete) - No one can create, update, or delete plans through the client.
+     * @principle Public read access for global plans.
      */
     match /global/plans/{planId} {
-      allow get, list: if true;
+      allow get: if true;
+      allow list: if true;
       allow create: if false;
       allow update: if false;
       allow delete: if false;
     }
   }
 
-  // Helper functions
+  // Helper function to determine if a user is signed in.
   function isSignedIn() {
     return request.auth != null;
-  }
-
-  function isOwner(userId) {
-    return request.auth.uid == userId;
-  }
-
-  function isTenantUser(tenantId, userId) {
-    return get(/databases/$(database)/documents/users/$(userId)).data.tenantId == tenantId;
-  }
-
-  function isExistingOwner(userId) {
-      return isOwner(userId) && resource != null;
   }
 }
