@@ -3,7 +3,7 @@
 import { z } from 'zod';
 import { initializeFirebase, setDocumentNonBlocking } from '@/firebase';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
-import { doc, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { doc, serverTimestamp } from 'firebase/firestore';
 import { FirebaseError } from 'firebase/app';
 import { redirect } from 'next/navigation';
 
@@ -52,40 +52,33 @@ export async function registerTenant(prevState: State, formData: FormData): Prom
 
     const tenantId = sanitizeTenantId(tenantName);
 
-    // Use a batch to perform multiple writes atomically
-    const batch = writeBatch(firestore);
-
     // 2. Create the tenant document
     const tenantRef = doc(firestore, 'tenants', tenantId);
-    batch.set(tenantRef, {
+    const tenantData = {
       id: tenantId,
       name: tenantName,
       ownerEmail: email,
       createdAt: serverTimestamp(),
       plan: 'free',
-    });
+    };
+    setDocumentNonBlocking(tenantRef, tenantData, {});
 
     // 3. Create the user document within the tenant's subcollection
     const userRef = doc(firestore, `tenants/${tenantId}/users`, user.uid);
-    batch.set(userRef, {
+    const userData = {
       id: user.uid,
       email: user.email,
       firstName: '',
       lastName: '',
       roles: ['admin'],
       tenantId: tenantId,
-    });
+    };
+    setDocumentNonBlocking(userRef, userData, {});
     
     // 4. Create the mapping in the top-level users collection for security rules
     const userTenantMappingRef = doc(firestore, 'users', user.uid);
-    batch.set(userTenantMappingRef, { tenantId: tenantId });
-    
-    await batch.commit();
-
-    // Store tenantId for the login flow to pick up
-    // This is a bit of a workaround because we can't directly sign in and set session here
-    // But onAuthStateChanged on the client will now handle it.
-    // We can't use localStorage on the server.
+    const userTenantData = { tenantId: tenantId };
+    setDocumentNonBlocking(userTenantMappingRef, userTenantData, {});
     
   } catch (error: any) {
     if (error instanceof FirebaseError) {
@@ -93,6 +86,9 @@ export async function registerTenant(prevState: State, formData: FormData): Prom
         return { message: 'This email is already registered.', error: true };
       }
     }
+    // A permission error from setDocumentNonBlocking will be emitted globally
+    // and show up in the dev overlay. We can return a generic message here
+    // or let the user see the overlay.
     console.error(error);
     return { message: 'An unexpected error occurred during registration.', error: true };
   }
