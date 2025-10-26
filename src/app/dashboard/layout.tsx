@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   FileDown,
   FileUp,
+  CookingPot,
 } from 'lucide-react';
 import {usePathname, useRouter} from 'next/navigation';
 
@@ -29,6 +30,7 @@ import {onAuthStateChanged, signOut} from 'firebase/auth';
 const navItems = [
   {href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard'},
   {href: '/dashboard/pos', icon: ShoppingCart, label: 'Point of Sale'},
+  {href: '/kds', icon: CookingPot, label: 'Kitchen Display'},
   {href: '/dashboard/reports', icon: LineChart, label: 'Reports'},
   {href: '/dashboard/assets', icon: FileUp, label: 'Invoices & Assets'},
   {href: '/dashboard/datev-export', icon: FileDown, label: 'DATEV Export'},
