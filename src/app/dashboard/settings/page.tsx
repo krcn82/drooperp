@@ -3,34 +3,12 @@
 import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { User, Shield, CreditCard, Users as UsersIcon, Bell } from 'lucide-react';
+import { User, Shield, CreditCard, Users as UsersIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import AccountSettings from './account-settings';
+import SubscriptionSettings from './subscription-settings';
 
-// Placeholder components for each settings section
-const AccountSettings = () => (
-  <Card>
-    <CardHeader>
-      <CardTitle>Account</CardTitle>
-      <CardDescription>Manage your personal account details.</CardDescription>
-    </CardHeader>
-    <CardContent>
-      <p>Account settings form will go here.</p>
-    </CardContent>
-  </Card>
-);
-
-const SubscriptionSettings = () => (
-  <Card>
-    <CardHeader>
-      <CardTitle>Subscription</CardTitle>
-      <CardDescription>Manage your billing and subscription plan.</CardDescription>
-    </CardHeader>
-    <CardContent>
-      <p>Subscription management interface will go here.</p>
-    </CardContent>
-  </Card>
-);
-
+// Placeholder components for other sections
 const UsersSettings = () => (
     <Card>
       <CardHeader>
@@ -88,8 +66,6 @@ export default function SettingsPage() {
     <div className="flex flex-col gap-6">
         <div className="flex items-center justify-between">
             <h1 className="text-3xl font-bold font-headline tracking-tight">Settings</h1>
-            {/* In a real app, tenantName would come from context or a hook */}
-            <span className="text-muted-foreground">Droop Inc.</span>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] lg:grid-cols-[250px_1fr] gap-8 items-start">
