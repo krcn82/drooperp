@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CreditCard, Utensils, QrCode, X, Plus, Minus, Barcode, WifiOff, Camera, Search, ArrowLeft } from 'lucide-react';
+import { CreditCard, ShoppingCart, QrCode, X, Plus, Minus, Barcode, WifiOff, Camera, Search } from 'lucide-react';
 import { useUser } from '@/firebase';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -127,6 +127,7 @@ export default function PosPage() {
       setIsScanning(true);
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        videoRef.current.play();
       }
 
       Quagga.init({
@@ -324,23 +325,32 @@ export default function PosPage() {
             <TabsContent value="restaurant">
                <Card>
                 <CardHeader>
-                  <CardTitle>Restaurant</CardTitle>
-                  <CardDescription>Manage tables and orders.</CardDescription>
+                  <CardTitle>Restaurant Floor Plan</CardTitle>
+                  <CardDescription>Manage tables and orders. Click a table to start an order.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
                     {Array.from({length: 12}).map((_, i) => (
                       <Card
                         key={i}
-                        className={`text-center ${i % 3 === 0 ? 'bg-green-100 dark:bg-green-900' : i % 3 === 1 ? 'bg-orange-100 dark:bg-orange-900' : 'bg-red-100 dark:bg-red-900'}`}>
+                        className={`text-center cursor-pointer transition-transform hover:scale-105 ${
+                          i % 3 === 0
+                            ? 'bg-green-100 dark:bg-green-900/50 border-green-200 dark:border-green-800'
+                            : i % 3 === 1
+                            ? 'bg-orange-100 dark:bg-orange-900/50 border-orange-200 dark:border-orange-800'
+                            : 'bg-red-100 dark:bg-red-900/50 border-red-200 dark:border-red-800'
+                        }`}>
                         <CardHeader className="p-4">
                           <CardTitle>Table {i + 1}</CardTitle>
                         </CardHeader>
                         <CardContent className="p-4">
                           {i % 3 === 0 ? (
-                            <p className="text-sm">Available</p>
+                            <p className="text-sm text-green-700 dark:text-green-300">Available</p>
                           ) : (
-                            <p className="font-bold text-lg">${(Math.random() * 100 + 20).toFixed(2)}</p>
+                            <div className="space-y-1">
+                                <p className="font-bold text-lg text-orange-800 dark:text-orange-200">${(Math.random() * 100 + 20).toFixed(2)}</p>
+                                <p className="text-xs text-orange-600 dark:text-orange-400">{i % 3 === 1 ? 'Occupied' : 'Payment Due'}</p>
+                            </div>
                           )}
                         </CardContent>
                       </Card>
@@ -348,7 +358,7 @@ export default function PosPage() {
                   </div>
                 </CardContent>
                 <CardFooter>
-                  <p className="text-sm text-muted-foreground">Click a table to view or create an order.</p>
+                  <p className="text-sm text-muted-foreground">This is a visual stub. Functionality for table orders and kitchen display system can be added next.</p>
                 </CardFooter>
               </Card>
             </TabsContent>
@@ -395,3 +405,5 @@ export default function PosPage() {
     </div>
   );
 }
+
+    
