@@ -54,21 +54,30 @@ export default function LoginPage() {
         if (tenantId) {
           // 1. Associate user with tenant for security rules
           const userTenantRef = doc(firestore, 'users', user.uid);
+          // This function now internally handles permission errors via the global emitter
           setDocumentNonBlocking(userTenantRef, { tenantId }, { merge: true });
   
           // 2. Check if tenant document exists, if not, create it
-          const tenantRef = doc(firestore, 'tenants', tenantId);
-          const tenantDoc = await getDoc(tenantRef);
-  
-          if (!tenantDoc.exists()) {
-            // Tenant does not exist, create it with default values
-            const newTenantData = {
-              id: tenantId,
-              name: `${tenantId}'s Company`, // Default name
-              domain: `${tenantId}.example.com`, // Default domain
-              subscriptionId: null, // No subscription initially
-            };
-            setDocumentNonBlocking(tenantRef, newTenantData, {});
+          try {
+            const tenantRef = doc(firestore, 'tenants', tenantId);
+            const tenantDoc = await getDoc(tenantRef);
+    
+            if (!tenantDoc.exists()) {
+              // Tenant does not exist, create it with default values
+              const newTenantData = {
+                id: tenantId,
+                name: `${tenantId}'s Company`, // Default name
+                domain: `${tenantId}.example.com`, // Default domain
+                subscriptionId: null, // No subscription initially
+              };
+              // This function also handles permission errors internally
+              setDocumentNonBlocking(tenantRef, newTenantData, {});
+            }
+          } catch(e) {
+             // While setDocumentNonBlocking handles its own permission errors,
+             // getDoc can also fail. For now, we log it, but a full implementation
+             // would also emit a specific error for 'get' operations.
+             console.error("Error checking or creating tenant document:", e);
           }
         }
         router.push('/dashboard');
