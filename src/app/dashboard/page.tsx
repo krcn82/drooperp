@@ -1,70 +1,83 @@
-import {Card, CardHeader, CardTitle, CardDescription} from '@/components/ui/card';
-import {Archive, FileDown, LayoutDashboard, Shield, ShoppingCart, Users, Settings} from 'lucide-react';
-import Link from 'next/link';
-
-const modules = [
-  {
-    title: 'Point of Sale',
-    description: 'Manage sales for shop & restaurant.',
-    icon: ShoppingCart,
-    href: '/dashboard/pos',
-    color: 'text-green-500',
-  },
-  {
-    title: 'Invoices & Assets',
-    description: 'Store and manage documents.',
-    icon: Archive,
-    href: '/dashboard/assets',
-    color: 'text-blue-500',
-  },
-  {
-    title: 'DATEV Export',
-    description: 'Export financial data for accounting.',
-    icon: FileDown,
-    href: '/dashboard/datev-export',
-    color: 'text-yellow-500',
-  },
-  {
-    title: 'GDPR Tools',
-    description: 'Data export, deletion, and compliance.',
-    icon: Shield,
-    href: '/dashboard/gdpr',
-    color: 'text-red-500',
-  },
-  {
-    title: 'User Management',
-    description: 'Manage users and their permissions.',
-    icon: Users,
-    href: '/dashboard/users',
-    color: 'text-purple-500',
-  },
-  {
-    title: 'Settings',
-    description: 'Configure tenant and system settings.',
-    icon: Settings,
-    href: '/dashboard/settings',
-    color: 'text-gray-500',
-  },
-];
+import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
+import { DollarSign, Users, CreditCard, Calendar } from "lucide-react";
 
 export default function DashboardPage() {
   return (
     <>
-      <h1 className="text-3xl font-bold font-headline tracking-tight">Dashboard</h1>
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {modules.map(mod => (
-          <Link href={mod.href} key={mod.title}>
-            <Card className="hover:shadow-lg transition-shadow duration-300 hover:border-primary/50">
-              <CardHeader className="flex flex-col items-center justify-center text-center p-6">
-                <div className="mb-4">
-                  <mod.icon className={`h-12 w-12 ${mod.color}`} />
-                </div>
-                <CardTitle className="font-headline text-xl">{mod.title}</CardTitle>
-                <CardDescription>{mod.description}</CardDescription>
-              </CardHeader>
-            </Card>
-          </Link>
-        ))}
+      <h1 className="text-3xl font-bold font-headline tracking-tight mb-2">
+        Dashboard
+      </h1>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Sales</CardTitle>
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">1,245</div>
+            <p className="text-xs text-muted-foreground">
+              +15.2% from last month
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Active Users</CardTitle>
+            <Users className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">5</div>
+            <p className="text-xs text-muted-foreground">
+              2 Admins, 3 Users
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Subscription Plan</CardTitle>
+            <CreditCard className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">Standard</div>
+            <p className="text-xs text-muted-foreground">
+              Renews on July 30, 2024
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Date of Creation</CardTitle>
+            <Calendar className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">Jan 15, 2024</div>
+            <p className="text-xs text-muted-foreground">
+              Your journey started here
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-7 gap-4">
+        <Card className="lg:col-span-4">
+          <CardHeader>
+            <CardTitle>Recent Activity</CardTitle>
+            <CardDescription>An overview of recent transactions and events.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {/* Placeholder for recent activity feed or chart */}
+            <p className="text-sm text-center text-muted-foreground py-12">Recent activity will be shown here.</p>
+          </CardContent>
+        </Card>
+        <Card className="lg:col-span-3">
+          <CardHeader>
+            <CardTitle>Quick Actions</CardTitle>
+             <CardDescription>Quickly jump to common tasks.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-2">
+             {/* Placeholder for quick actions */}
+            <p className="text-sm text-center text-muted-foreground py-12">Quick action links will appear here.</p>
+          </CardContent>
+        </Card>
       </div>
     </>
   );

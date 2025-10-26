@@ -1,15 +1,12 @@
 'use client';
 import Link from 'next/link';
 import {
-  Archive,
-  FileDown,
+  LineChart,
   LayoutDashboard,
   PanelLeft,
   Search,
   Settings,
-  Shield,
   ShoppingCart,
-  Users,
 } from 'lucide-react';
 import {usePathname, useRouter} from 'next/navigation';
 
@@ -26,10 +23,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 const navItems = [
   {href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard'},
   {href: '/dashboard/pos', icon: ShoppingCart, label: 'Point of Sale'},
-  {href: '/dashboard/assets', icon: Archive, label: 'Invoices & Assets'},
-  {href: '/dashboard/datev-export', icon: FileDown, label: 'DATEV Export'},
-  {href: '/dashboard/gdpr', icon: Shield, label: 'GDPR Tools'},
-  {href: '/dashboard/users', icon: Users, label: 'Users'},
+  {href: '/dashboard/reports', icon: LineChart, label: 'Reports'},
   {href: '/dashboard/settings', icon: Settings, label: 'Settings'},
 ];
 
@@ -54,7 +48,7 @@ export default function DashboardLayout({children}: {children: React.ReactNode})
       href={href}
       className={cn(
         'flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary',
-        pathname === href && 'bg-muted text-primary',
+        pathname.startsWith(href) && (href !== '/dashboard' || pathname === '/dashboard') ? 'bg-muted text-primary' : '',
         mobile && 'gap-4 px-2.5'
       )}>
       <Icon className="h-4 w-4" />
@@ -116,7 +110,7 @@ export default function DashboardLayout({children}: {children: React.ReactNode})
           </div>
           <UserNav />
         </header>
-        <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6 bg-background">{children}</main>
+        <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6">{children}</main>
       </div>
     </div>
   );
