@@ -8,19 +8,7 @@ import { cn } from '@/lib/utils';
 import AccountSettings from './account-settings';
 import SubscriptionSettings from './subscription-settings';
 import UsersSettings from './users-settings';
-
-// Placeholder components for other sections
-const PrivacySettings = () => (
-    <Card>
-      <CardHeader>
-        <CardTitle>Data Privacy (DSGVO / GDPR)</CardTitle>
-        <CardDescription>Manage your data and privacy settings.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <p>Data export and deletion tools will go here.</p>
-      </CardContent>
-    </Card>
-  );
+import Link from 'next/link';
 
 
 type SettingsView = 'account' | 'subscription' | 'users' | 'privacy';
@@ -29,7 +17,6 @@ const settingsNav = [
     { id: 'account', label: 'Account', icon: User },
     { id: 'subscription', label: 'Subscription', icon: CreditCard },
     { id: 'users', label: 'Users', icon: UsersIcon },
-    { id: 'privacy', label: 'Data Privacy (DSGVO)', icon: Shield },
 ] as const;
 
 
@@ -44,8 +31,6 @@ export default function SettingsPage() {
         return <SubscriptionSettings />;
       case 'users':
         return <UsersSettings />;
-      case 'privacy':
-        return <PrivacySettings />;
       default:
         return <AccountSettings />;
     }
@@ -75,6 +60,15 @@ export default function SettingsPage() {
                             <span className="truncate">{item.label}</span>
                          </Button>
                     ))}
+                    <Link href="/dashboard/gdpr" legacyBehavior passHref>
+                        <Button
+                            variant="ghost"
+                            className={cn('w-full justify-start text-base md:text-sm')}
+                        >
+                            <Shield className="mr-2 h-4 w-4" />
+                            <span className="truncate">Data Privacy (DSGVO)</span>
+                        </Button>
+                    </Link>
                 </nav>
             </Card>
 
