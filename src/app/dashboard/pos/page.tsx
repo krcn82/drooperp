@@ -49,6 +49,7 @@ export default function PosPage() {
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const scannerInitialized = useRef(false);
 
   useEffect(() => {
     setIsClient(true);
@@ -151,6 +152,7 @@ export default function PosPage() {
           toast({ variant: 'destructive', title: 'Scanner Error', description: 'Could not initialize barcode scanner.' });
           return;
         }
+        scannerInitialized.current = true;
         Quagga.start();
       });
 
@@ -168,8 +170,11 @@ export default function PosPage() {
   };
   
   const stopScanner = () => {
-    Quagga.offDetected(handleBarcodeDetection);
-    Quagga.stop();
+    if (scannerInitialized.current) {
+        Quagga.offDetected(handleBarcodeDetection);
+        Quagga.stop();
+        scannerInitialized.current = false;
+    }
     if (videoRef.current && videoRef.current.srcObject) {
       (videoRef.current.srcObject as MediaStream).getTracks().forEach(track => track.stop());
     }
@@ -405,5 +410,3 @@ export default function PosPage() {
     </div>
   );
 }
-
-    
