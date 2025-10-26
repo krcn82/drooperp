@@ -48,7 +48,7 @@ The command will output the URL of your live application.
 
 ### Cloud Functions Deployment
 
-To deploy your server-side logic located in the `/functions` directory, run the following command:
+To deploy your server-side logic located in the `functions` directory, run the following command:
 
 ```bash
 firebase deploy --only functions
