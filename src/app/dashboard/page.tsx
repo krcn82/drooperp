@@ -1,12 +1,31 @@
+'use client';
+
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
-import { DollarSign, Users, CreditCard, Calendar } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { DollarSign, Users, CreditCard, Calendar, ShoppingCart } from "lucide-react";
+import { useUser, useFirestore, useMemoFirebase } from "@/firebase";
+import { doc, collection } from "firebase/firestore";
+import { useDoc, useCollection } from "@/firebase";
+import Link from "next/link";
+
 
 export default function DashboardPage() {
+  // For now, we will use static data. We will connect to Firestore in a follow-up.
+  const tenantName = "Droop Inc.";
+  const totalSales = 0;
+  const activeUsers = 0;
+  const subscriptionPlan = "Free";
+  const creationDate = "2024-01-01";
+  const hasActivity = totalSales > 0 || activeUsers > 0;
+
   return (
     <>
-      <h1 className="text-3xl font-bold font-headline tracking-tight mb-2">
-        Dashboard
-      </h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-3xl font-bold font-headline tracking-tight">
+          Welcome, {tenantName}
+        </h1>
+      </div>
+      
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -14,9 +33,9 @@ export default function DashboardPage() {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">1,245</div>
+            <div className="text-2xl font-bold">{totalSales}</div>
             <p className="text-xs text-muted-foreground">
-              +15.2% from last month
+              Total transactions recorded
             </p>
           </CardContent>
         </Card>
@@ -26,9 +45,9 @@ export default function DashboardPage() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">5</div>
-            <p className="text-xs text-muted-foreground">
-              2 Admins, 3 Users
+            <div className="text-2xl font-bold">{activeUsers}</div>
+             <p className="text-xs text-muted-foreground">
+              Users in this tenant
             </p>
           </CardContent>
         </Card>
@@ -38,9 +57,9 @@ export default function DashboardPage() {
             <CreditCard className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">Standard</div>
+            <div className="text-2xl font-bold capitalize">{subscriptionPlan}</div>
             <p className="text-xs text-muted-foreground">
-              Renews on July 30, 2024
+              Your current plan
             </p>
           </CardContent>
         </Card>
@@ -50,35 +69,30 @@ export default function DashboardPage() {
             <Calendar className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">Jan 15, 2024</div>
+            <div className="text-2xl font-bold">{new Date(creationDate).toLocaleDateString()}</div>
             <p className="text-xs text-muted-foreground">
               Your journey started here
             </p>
           </CardContent>
         </Card>
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-7 gap-4">
-        <Card className="lg:col-span-4">
-          <CardHeader>
-            <CardTitle>Recent Activity</CardTitle>
-            <CardDescription>An overview of recent transactions and events.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {/* Placeholder for recent activity feed or chart */}
-            <p className="text-sm text-center text-muted-foreground py-12">Recent activity will be shown here.</p>
-          </CardContent>
-        </Card>
-        <Card className="lg:col-span-3">
-          <CardHeader>
-            <CardTitle>Quick Actions</CardTitle>
-             <CardDescription>Quickly jump to common tasks.</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-2">
-             {/* Placeholder for quick actions */}
-            <p className="text-sm text-center text-muted-foreground py-12">Quick action links will appear here.</p>
-          </CardContent>
-        </Card>
-      </div>
+
+      {!hasActivity && (
+         <Card className="text-center">
+            <CardHeader>
+                <CardTitle>No Activity Yet</CardTitle>
+                <CardDescription>Get started by making your first sale.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <Link href="/dashboard/pos">
+                    <Button>
+                        <ShoppingCart className="mr-2"/>
+                        Go to Point of Sale
+                    </Button>
+                </Link>
+            </CardContent>
+         </Card>
+      )}
     </>
   );
 }

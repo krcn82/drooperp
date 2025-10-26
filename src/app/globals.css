@@ -4,11 +4,11 @@
 
 @layer base {
   :root {
-    --background: 210 20% 96%; /* #ECEFF1 */
+    --background: 220 20% 97%; /* #f8f9fb */
     --foreground: 222.2 84% 4.9%;
-    --card: 210 20% 96%;
+    --card: 0 0% 100%; /* white */
     --card-foreground: 222.2 84% 4.9%;
-    --popover: 210 20% 96%;
+    --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
     --primary: 231 48% 48%; /* #3F51B5 */
     --primary-foreground: 210 40% 98%;
@@ -55,4 +55,10 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+@layer components {
+    .card {
+        @apply shadow-sm;
+    }
 }
