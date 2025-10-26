@@ -9,12 +9,16 @@ import {
   ShoppingCart,
   LogOut,
   FileText,
+  Users as UsersIcon,
+  ShieldCheck,
+  FileDown,
+  FileUp,
 } from 'lucide-react';
 import {usePathname, useRouter} from 'next/navigation';
 
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
-import {Sheet, SheetContent, SheetTrigger} from '@/components/ui/sheet';
+import {Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetTrigger} from '@/components/ui/sheet';
 import {cn} from '@/lib/utils';
 import {UserNav} from '@/components/common/user-nav';
 import {Database} from 'lucide-react';
@@ -26,6 +30,10 @@ const navItems = [
   {href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard'},
   {href: '/dashboard/pos', icon: ShoppingCart, label: 'Point of Sale'},
   {href: '/dashboard/reports', icon: LineChart, label: 'Reports'},
+  {href: '/dashboard/assets', icon: FileUp, label: 'Invoices & Assets'},
+  {href: '/dashboard/datev-export', icon: FileDown, label: 'DATEV Export'},
+  {href: '/dashboard/users', icon: UsersIcon, label: 'Users'},
+  {href: '/dashboard/gdpr', icon: ShieldCheck, label: 'GDPR Tools'},
   {href: '/dashboard/settings', icon: Settings, label: 'Settings'},
 ];
 
@@ -105,12 +113,14 @@ export default function DashboardLayout({children}: {children: React.ReactNode})
               </Button>
             </SheetTrigger>
             <SheetContent side="left" className="flex flex-col p-0">
-              <div className="flex h-14 items-center border-b px-6">
+               <SheetHeader className="h-14 flex flex-row items-center border-b px-6">
+                  <SheetTitle className="sr-only">Droop ERP Navigation</SheetTitle>
+                  <SheetDescription className="sr-only">Main navigation menu for the Droop ERP application.</SheetDescription>
                  <Link href="/" className="flex items-center gap-2 font-semibold font-headline">
                     <Database className="h-6 w-6 text-primary" />
                     <span>Droop ERP</span>
                   </Link>
-              </div>
+              </SheetHeader>
               <nav className="grid gap-2 p-4 text-lg font-medium">
                 {navItems.map(item => (
                   <NavLink key={item.href} {...item} mobile />
