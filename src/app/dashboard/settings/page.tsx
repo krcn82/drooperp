@@ -7,20 +7,9 @@ import { User, Shield, CreditCard, Users as UsersIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import AccountSettings from './account-settings';
 import SubscriptionSettings from './subscription-settings';
+import UsersSettings from './users-settings';
 
 // Placeholder components for other sections
-const UsersSettings = () => (
-    <Card>
-      <CardHeader>
-        <CardTitle>Users</CardTitle>
-        <CardDescription>Manage users, roles, and permissions.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <p>User management table and invitation forms will go here.</p>
-      </CardContent>
-    </Card>
-  );
-
 const PrivacySettings = () => (
     <Card>
       <CardHeader>

@@ -34,7 +34,6 @@ const navItems = [
   {href: '/dashboard/reports', icon: LineChart, label: 'Reports'},
   {href: '/dashboard/assets', icon: FileUp, label: 'Invoices & Assets'},
   {href: '/dashboard/datev-export', icon: FileDown, label: 'DATEV Export'},
-  {href: '/dashboard/users', icon: UsersIcon, label: 'Users'},
   {href: '/dashboard/gdpr', icon: ShieldCheck, label: 'GDPR Tools'},
   {href: '/dashboard/settings', icon: Settings, label: 'Settings'},
 ];
