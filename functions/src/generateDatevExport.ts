@@ -1,12 +1,18 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 
+type Transaction = {
+  timestamp: admin.firestore.Timestamp;
+  amountTotal: number;
+  paymentMethod: string;
+  items: { name: string; qty: number }[];
+};
+
 /**
  * Generates a DATEV-compatible CSV string from a tenant's transactions.
- * This is a stub function. The actual CSV generation logic would be complex.
  */
 export const generateDatevExport = functions.https.onCall(async (data, context) => {
-  const { tenantId, dateRange } = data; // dateRange could be { start: 'YYYY-MM-DD', end: 'YYYY-MM-DD' }
+  const { tenantId } = data;
   const uid = context.auth?.uid;
 
   if (!uid) {
@@ -17,7 +23,8 @@ export const generateDatevExport = functions.https.onCall(async (data, context) 
     throw new functions.https.HttpsError('invalid-argument', 'Missing required data: tenantId.');
   }
 
-  // In a real implementation, you would query transactions within the dateRange.
+  // In a real implementation, you would also check if the user has permission to access this tenant's data.
+
   const firestore = admin.firestore();
   const transactionsSnapshot = await firestore.collection(`tenants/${tenantId}/transactions`).get();
 
@@ -25,17 +32,25 @@ export const generateDatevExport = functions.https.onCall(async (data, context) 
     return { csv: '', message: 'No transactions found for the given period.' };
   }
   
-  // This is a simplified header. DATEV format is very specific.
-  let csvContent = 'Belegdatum,Buchungstext,Umsatz (o.USt),S/H-Kz\n';
+  // NOTE: This is a simplified DATEV format. The official format is highly complex and specific.
+  // This header matches the user's request.
+  let csvContent = 'Date,TransactionID,AccountNumber,Amount,PaymentMethod,Description\n';
   
   transactionsSnapshot.forEach(doc => {
-    const transaction = doc.data();
-    const date = (transaction.timestamp.toDate() as Date).toLocaleDateString('de-DE'); // German date format
-    const text = `Transaction ${doc.id}`;
-    const amount = transaction.amountTotal.toFixed(2);
-    const indicator = 'H'; // 'S' for Soll (debit), 'H' for Haben (credit) - this is a simplification
+    const tx = doc.data() as Transaction;
+    // Format date to DD.MM.YYYY
+    const date = tx.timestamp.toDate().toLocaleDateString('de-DE', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    });
+    const transactionId = doc.id;
+    const accountNumber = '8400'; // Example account for revenue
+    const amount = tx.amountTotal.toFixed(2).replace('.', ','); // German decimal format
+    const paymentMethod = tx.paymentMethod;
+    const description = tx.items.map(item => `${item.qty}x ${item.name}`).join(', ');
 
-    csvContent += `${date},${text},${amount},${indicator}\n`;
+    csvContent += `"${date}","${transactionId}","${accountNumber}","${amount}","${paymentMethod}","${description}"\n`;
   });
 
   return { csv: csvContent, message: 'Export generated successfully.' };
