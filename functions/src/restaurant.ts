@@ -72,3 +72,40 @@ export const updateKdsOrderStatus = functions.https.onCall(async (data, context)
     throw new functions.https.HttpsError('internal', 'An error occurred while updating the order status.');
   }
 });
+
+/**
+ * Firestore trigger that sends a notification when a KDS order status changes.
+ */
+export const onKdsOrderUpdate = functions.firestore
+  .document('/tenants/{tenantId}/kdsOrders/{orderId}')
+  .onUpdate(async (change, context) => {
+    const { tenantId, orderId } = context.params;
+    const newValue = change.after.data();
+    const oldValue = change.before.data();
+
+    // Check if the status has actually changed
+    if (newValue.status === oldValue.status) {
+      return null;
+    }
+    
+    console.log(`KDS order ${orderId} in tenant ${tenantId} changed status to ${newValue.status}`);
+
+    const notificationPayload = {
+      orderId: orderId,
+      tableId: newValue.tableId,
+      newStatus: newValue.status,
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    };
+    
+    try {
+      await admin.firestore()
+        .collection(`tenants/${tenantId}/notifications`)
+        .add(notificationPayload);
+
+      console.log(`Notification sent for order ${orderId}.`);
+      return null;
+    } catch (error) {
+      console.error(`Failed to send notification for order ${orderId}:`, error);
+      return null;
+    }
+  });

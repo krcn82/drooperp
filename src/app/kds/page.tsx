@@ -2,14 +2,15 @@
 
 import React, { useEffect, useState } from 'react';
 import { useFirestore, useUser, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, where, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, doc, getDoc } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { CookingPot, Check, Utensils, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-
+import { FirebaseApp } from 'firebase/app';
+import { useFirebaseApp } from '@/firebase';
 
 type KdsOrder = {
   id: string;
@@ -43,10 +44,16 @@ function TimeSince({ timestamp }: { timestamp: { seconds: number; nanoseconds: n
 export default function KdsPage() {
   const { user } = useUser();
   const firestore = useFirestore();
+  const firebaseApp = useFirebaseApp();
   const [tenantId, setTenantId] = useState<string | null>(null);
   const [tenantName, setTenantName] = useState<string>('Kitchen Display');
   const { toast } = useToast();
-  const functions = getFunctions();
+  
+  // Memoize functions instance
+  const functions = useMemo(() => {
+    if (!firebaseApp) return null;
+    return getFunctions(firebaseApp);
+  }, [firebaseApp]);
 
   useEffect(() => {
     const storedTenantId = localStorage.getItem('tenantId');
@@ -72,7 +79,15 @@ export default function KdsPage() {
   const { data: orders, isLoading, error } = useCollection<KdsOrder>(kdsOrdersQuery);
 
   const updateStatus = async (orderId: string, status: KdsOrder['status']) => {
-    if (!tenantId) return;
+    if (!tenantId || !functions) {
+        toast({
+            variant: 'destructive',
+            title: 'Error',
+            description: 'Cannot update status. Services not available.',
+        });
+        return;
+    }
+    
     try {
         const updateKdsOrderStatus = httpsCallable(functions, 'updateKdsOrderStatus');
         await updateKdsOrderStatus({ tenantId, orderId, status });
@@ -82,11 +97,11 @@ export default function KdsPage() {
             description: `Order has been marked as ${status}.`,
         });
     } catch (e: any) {
-        console.error(e);
+        console.error('Error calling updateKdsOrderStatus:', e);
         toast({
             variant: 'destructive',
             title: 'Update Failed',
-            description: e.message,
+            description: e.message || 'Could not update order status.',
         });
     }
   };
@@ -138,7 +153,7 @@ export default function KdsPage() {
 
       <main className="flex-1 p-4 lg:p-6 overflow-y-auto">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-          {orders && orders.map(order => (
+          {orders && orders.sort((a, b) => a.createdAt.seconds - b.createdAt.seconds).map(order => (
             <Card key={order.id} className={cn('flex flex-col border-2 transition-all', getStatusColor(order.status))}>
               <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-xl font-bold">Table {order.tableId}</CardTitle>
