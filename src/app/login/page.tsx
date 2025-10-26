@@ -176,8 +176,9 @@ export default function LoginPage() {
                 Sign in
               </Button>
               <div className="text-center text-sm">
-                <Link href="#" className="underline">
-                  Forgot your password?
+                Don't have an account?{' '}
+                <Link href="/register" className="underline">
+                  Sign up
                 </Link>
               </div>
             </CardFooter>
