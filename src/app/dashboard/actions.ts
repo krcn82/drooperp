@@ -62,6 +62,7 @@ export async function sendChatMessage(
 
   try {
     const input: ChatInput = {
+      tenantId,
       history: history.map(m => ({ role: m.role, text: m.text })),
       message,
     };

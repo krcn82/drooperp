@@ -130,7 +130,7 @@ export default function ChatWidget() {
                        msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'
                    )}>
                      {/* Basic markdown renderer */}
-                     <div dangerouslySetInnerHTML={{ __html: msg.text.replace(/\n/g, '<br />') }} />
+                     <div dangerouslySetInnerHTML={{ __html: msg.text.replace(/\n/g, '<br />').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') }} />
                    </div>
                    {msg.role === 'user' && (
                       <Avatar className="h-8 w-8">
