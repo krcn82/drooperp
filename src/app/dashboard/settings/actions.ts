@@ -1,9 +1,8 @@
 'use server';
 
 import { z } from 'zod';
-import { getAuth } from 'firebase/auth';
 import { doc } from 'firebase/firestore';
-import { setDocumentNonBlocking, initializeFirebase } from '@/firebase';
+import { setDocumentNonBlocking, initializeFirebase, useAuth } from '@/firebase';
 import { revalidatePath } from 'next/cache';
 
 const formSchema = z.object({
