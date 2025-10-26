@@ -4,15 +4,24 @@ import React, {useEffect, useState, useMemo} from 'react';
 import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '@/components/ui/card';
 import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from '@/components/ui/table';
 import {DollarSign, ShoppingCart, BarChart, Package} from 'lucide-react';
-import {useCollection, useFirestore, useUser, useMemoFirebase} from '@/firebase';
-import {collection, query, where, Timestamp} from 'firebase/firestore';
+import {useCollection, useFirestore} from '@/firebase';
+import {collection, Timestamp} from 'firebase/firestore';
 import {LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer} from 'recharts';
 import {format} from 'date-fns';
+import { useMemoFirebase } from '@/firebase/provider';
+import Link from 'next/link';
+
+type TransactionItem = {
+  name: string;
+  qty: number;
+  price: number;
+  productId: string;
+};
 
 type Transaction = {
   id: string;
-  items: {name: string; qty: number; price: number; productId: string}[];
-  totalAmount: number;
+  items: TransactionItem[];
+  amountTotal: number; // Changed from totalAmount to match POS data
   timestamp: Timestamp;
 };
 
@@ -37,7 +46,7 @@ const processTransactions = (transactions: Transaction[] | null): ProcessedData 
     };
   }
 
-  const totalRevenue = transactions.reduce((sum, tx) => sum + tx.totalAmount, 0);
+  const totalRevenue = transactions.reduce((sum, tx) => sum + tx.amountTotal, 0);
   const totalTransactions = transactions.length;
   const avgTicketSize = totalTransactions > 0 ? totalRevenue / totalTransactions : 0;
 
@@ -53,9 +62,9 @@ const processTransactions = (transactions: Transaction[] | null): ProcessedData 
   }
 
   transactions.forEach(tx => {
-    if (tx.timestamp.toDate() >= fourteenDaysAgo) {
+    if (tx.timestamp && tx.timestamp.toDate() >= fourteenDaysAgo) {
       const dateStr = format(tx.timestamp.toDate(), 'yyyy-MM-dd');
-      dailyRevenue[dateStr] = (dailyRevenue[dateStr] || 0) + tx.totalAmount;
+      dailyRevenue[dateStr] = (dailyRevenue[dateStr] || 0) + tx.amountTotal;
     }
   });
 
@@ -69,19 +78,23 @@ const processTransactions = (transactions: Transaction[] | null): ProcessedData 
   // Product analysis
   const productSales = new Map<string, {name: string; quantity: number; revenue: number}>();
   transactions.forEach(tx => {
-    tx.items.forEach(item => {
-      const existing = productSales.get(item.productId);
-      if (existing) {
-        existing.quantity += item.qty;
-        existing.revenue += item.price * item.qty;
-      } else {
-        productSales.set(item.productId, {
-          name: item.name,
-          quantity: item.qty,
-          revenue: item.price * item.qty,
-        });
-      }
-    });
+    // The items in the transaction might not be in the format we expect.
+    // Let's check for productIds and quantities, or items array.
+    if (Array.isArray(tx.items)) {
+         tx.items.forEach(item => {
+            const existing = productSales.get(item.productId);
+            if (existing) {
+                existing.quantity += item.qty;
+                existing.revenue += item.price * item.qty;
+            } else {
+                productSales.set(item.productId, {
+                name: item.name,
+                quantity: item.qty,
+                revenue: item.price * item.qty,
+                });
+            }
+         });
+    }
   });
 
   const topProducts = Array.from(productSales.values()).sort((a, b) => b.quantity - a.quantity);
@@ -111,7 +124,7 @@ export default function ReportsPage() {
     return collection(firestore, `tenants/${tenantId}/transactions`);
   }, [firestore, tenantId]);
 
-  const {data: transactions, isLoading} = useCollection<Transaction>(transactionsQuery);
+  const {data: transactions, isLoading, error} = useCollection<Transaction>(transactionsQuery);
   const processedData = useMemo(() => processTransactions(transactions), [transactions]);
 
   if (isLoading) {
@@ -129,18 +142,43 @@ export default function ReportsPage() {
               <h1 className="text-3xl font-bold font-headline tracking-tight">Reports & Analytics</h1>
               <Card>
                   <CardHeader>
-                      <CardTitle>No Data Yet</CardTitle>
+                      <CardTitle>No Transactions Found</CardTitle>
                       <CardDescription>
-                          Once you start making sales, your reports and analytics will appear here.
+                          Start using your POS to generate reports.
                       </CardDescription>
                   </CardHeader>
                   <CardContent>
-                      <p>Go to the Point of Sale page to record your first transaction.</p>
+                      <p>Once you start making sales, your reports and analytics will appear here.</p>
+                       <Link href="/dashboard/pos" className="mt-4 inline-block">
+                          <Button>
+                              <ShoppingCart className="mr-2 h-4 w-4" /> Go to Point of Sale
+                          </Button>
+                        </Link>
                   </CardContent>
               </Card>
           </div>
       )
   }
+  
+  if (error) {
+     return (
+          <div className="flex flex-col gap-6">
+              <h1 className="text-3xl font-bold font-headline tracking-tight">Reports & Analytics</h1>
+              <Card className="border-destructive">
+                  <CardHeader>
+                      <CardTitle className="text-destructive">Error Loading Data</CardTitle>
+                      <CardDescription>
+                         There was an error fetching your transaction data. Please check your permissions.
+                      </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                      <p className="font-mono text-sm text-muted-foreground">{error.message}</p>
+                  </CardContent>
+              </Card>
+          </div>
+      )
+  }
+
 
   const {totalRevenue, totalTransactions, avgTicketSize, mostSoldProduct, chartData, topProducts} = processedData;
 
@@ -237,3 +275,5 @@ export default function ReportsPage() {
     </div>
   );
 }
+
+    
