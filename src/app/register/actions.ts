@@ -43,56 +43,55 @@ export async function registerTenant(prevState: State, formData: FormData): Prom
   const { tenantName, email, password } = validatedFields.data;
   const { auth, firestore } = initializeFirebase();
 
+  let user;
   try {
-    // 1. Create the user with Firebase Auth
+    // 1. Create the user with Firebase Auth first
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    const user = userCredential.user;
-
+    user = userCredential.user;
     await updateProfile(user, { displayName: tenantName });
-
-    const tenantId = sanitizeTenantId(tenantName);
-
-    // 2. Create the tenant document
-    const tenantRef = doc(firestore, 'tenants', tenantId);
-    const tenantData = {
-      id: tenantId,
-      name: tenantName,
-      ownerEmail: email,
-      createdAt: serverTimestamp(),
-      plan: 'free',
-    };
-    setDocumentNonBlocking(tenantRef, tenantData, {});
-
-    // 3. Create the user document within the tenant's subcollection
-    const userRef = doc(firestore, `tenants/${tenantId}/users`, user.uid);
-    const userData = {
-      id: user.uid,
-      email: user.email,
-      firstName: '',
-      lastName: '',
-      roles: ['admin'],
-      tenantId: tenantId,
-    };
-    setDocumentNonBlocking(userRef, userData, {});
-    
-    // 4. Create the mapping in the top-level users collection for security rules
-    const userTenantMappingRef = doc(firestore, 'users', user.uid);
-    const userTenantData = { tenantId: tenantId };
-    setDocumentNonBlocking(userTenantMappingRef, userTenantData, {});
-    
   } catch (error: any) {
     if (error instanceof FirebaseError) {
       if (error.code === 'auth/email-already-in-use') {
         return { message: 'This email is already registered.', error: true };
       }
     }
-    // A permission error from setDocumentNonBlocking will be emitted globally
-    // and show up in the dev overlay. We can return a generic message here
-    // or let the user see the overlay.
-    console.error(error);
+    console.error('An unexpected error occurred during user creation:', error);
     return { message: 'An unexpected error occurred during registration.', error: true };
   }
 
-  // If registration is successful, Next.js will redirect
+  const tenantId = sanitizeTenantId(tenantName);
+
+  // 2. Create the tenant document
+  const tenantRef = doc(firestore, 'tenants', tenantId);
+  const tenantData = {
+    id: tenantId,
+    name: tenantName,
+    ownerEmail: email,
+    createdAt: serverTimestamp(),
+    plan: 'free',
+  };
+  // This function does not block and handles permission errors automatically
+  setDocumentNonBlocking(tenantRef, tenantData, {});
+
+  // 3. Create the user document within the tenant's subcollection
+  const userRef = doc(firestore, `tenants/${tenantId}/users`, user.uid);
+  const userData = {
+    id: user.uid,
+    email: user.email,
+    firstName: '',
+    lastName: '',
+    roles: ['admin'],
+    tenantId: tenantId,
+  };
+  setDocumentNonBlocking(userRef, userData, {});
+    
+  // 4. Create the mapping in the top-level users collection for security rules
+  const userTenantMappingRef = doc(firestore, 'users', user.uid);
+  const userTenantData = { tenantId: tenantId };
+  setDocumentNonBlocking(userTenantMappingRef, userTenantData, {});
+  
+  // As Firestore writes are now non-blocking, we optimistically proceed.
+  // If a permission error occurs, the global error handler will catch it on the client.
+  // We can redirect immediately.
   redirect('/login');
 }
