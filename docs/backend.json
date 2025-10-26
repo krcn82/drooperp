@@ -205,7 +205,7 @@
         },
         "tenantId": {
           "type": "string",
-          "description": "Reference to Tenant. (Relationship: Tenant 1:N Subscription)"
+          "description": "Reference to Tenant. (Relationship_ Tenant 1:N Subscription)"
         }
       },
       "required": [
@@ -226,7 +226,25 @@
           "description": "The ID of the tenant the user belongs to."
         }
       },
-      "required": ["tenantId"]
+      "required": [
+        "tenantId"
+      ]
+    },
+    "Settings": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Settings",
+      "type": "object",
+      "description": "Represents tenant-specific settings.",
+      "properties": {
+        "companyName": {
+          "type": "string",
+          "description": "The name of the company."
+        },
+        "themeColor": {
+          "type": "string",
+          "description": "The primary color for the UI theme."
+        }
+      }
     }
   },
   "auth": {
@@ -264,6 +282,12 @@
         "$ref": "#/entities/Product"
       },
       "description": "Sub-collection for products within a tenant."
+    },
+    "/tenants/{tenantId}/settings/{settingId}": {
+      "schema": {
+        "$ref": "#/entities/Settings"
+      },
+      "description": "Sub-collection for settings within a tenant."
     },
     "/global/plans/{planId}": {
       "schema": {
