@@ -31,10 +31,12 @@ This process will create or update the necessary Firebase configuration files (`
 
 ## Manual Deployment
 
-Once your project is initialized, you can deploy your application with a single command.
+### Web App Deployment
+
+Once your project is initialized, you can deploy your Next.js application with a single command.
 
 ```bash
-firebase deploy
+firebase deploy --only hosting
 ```
 
 This command will:
@@ -43,6 +45,22 @@ This command will:
 3.  Apply your Firestore security rules from `firestore.rules`.
 
 The command will output the URL of your live application.
+
+### Cloud Functions Deployment
+
+To deploy your server-side logic located in the `/functions` directory, run the following command:
+
+```bash
+firebase deploy --only functions
+```
+
+This will build and deploy all your Cloud Functions.
+
+To deploy everything at once, simply run:
+```bash
+firebase deploy
+```
+
 
 ## Automatic Deployment with GitHub Actions
 
@@ -77,6 +95,12 @@ You can automate deployments whenever you push code to your GitHub repository.
 
           - name: Build application
             run: npm run build
+          
+          - name: Install function dependencies
+            run: cd functions && npm install && cd ..
+          
+          - name: Build functions
+            run: cd functions && npm run build && cd ..
 
           - name: Deploy to Firebase
             uses: FirebaseExtended/action-hosting-deploy@v0
@@ -97,4 +121,4 @@ You can automate deployments whenever you push code to your GitHub repository.
         *   Name the secret `FIREBASE_SERVICE_ACCOUNT`.
         *   Copy the entire content of the downloaded JSON file and paste it into the secret's value field.
 
-Now, every time you push to the `main` branch, your application will be automatically built and deployed to Firebase App Hosting.
+Now, every time you push to the `main` branch, your application and functions will be automatically built and deployed to Firebase App Hosting.

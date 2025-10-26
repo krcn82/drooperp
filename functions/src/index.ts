@@ -1,0 +1,12 @@
+/**
+ * Initializes Firebase Admin SDK and exports all Cloud Functions.
+ */
+import * as admin from 'firebase-admin';
+
+admin.initializeApp();
+
+// Export functions from their individual files
+export * from './registerTenant';
+export * from './recordTransaction';
+export * from './syncOfflineTransactions';
+export * from './generateDatevExport';
