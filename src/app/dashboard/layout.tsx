@@ -26,6 +26,7 @@ import {Database} from 'lucide-react';
 import {useAuth, useUser} from '@/firebase';
 import {useEffect} from 'react';
 import {onAuthStateChanged, signOut} from 'firebase/auth';
+import ChatWidget from '@/components/ai/ChatWidget';
 
 const navItems = [
   {href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard'},
@@ -149,7 +150,10 @@ export default function DashboardLayout({children}: {children: React.ReactNode})
           </div>
           <UserNav />
         </header>
-        <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6 bg-background">{children}</main>
+        <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6 bg-background">
+          {children}
+          <ChatWidget />
+        </main>
       </div>
     </div>
   );
