@@ -11,3 +11,4 @@ export * from './recordTransaction';
 export * from './syncOfflineTransactions';
 export * from './generateDatevExport';
 export * from './restaurant';
+export * from './aiAutomationWorker';
