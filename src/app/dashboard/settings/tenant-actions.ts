@@ -1,0 +1,106 @@
+'use server';
+
+import { initializeFirebase, setDocumentNonBlocking, addDocumentNonBlocking } from '@/firebase';
+import { collection, serverTimestamp, doc } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth'; // Not used, but good for reference
+import { revalidatePath } from 'next/cache';
+import { cookies } from 'next/headers';
+import { auth as adminAuth } from 'firebase-admin';
+
+// Sanitize tenant name to create a valid Firestore document ID
+const sanitizeTenantId = (name: string) => {
+  return name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+};
+
+/**
+ * Creates a new tenant document and associated user records.
+ * This should only be callable by an authenticated user.
+ */
+export async function createNewTenant(tenantName: string): Promise<{ success: boolean; message: string }> {
+  // On the server, we need to get the user from the session cookie
+  const cookieStore = cookies();
+  const sessionCookie = cookieStore.get('session')?.value;
+  if (!sessionCookie) {
+    return { success: false, message: 'User is not authenticated.' };
+  }
+  
+  let decodedToken;
+  try {
+    decodedToken = await adminAuth().verifySessionCookie(sessionCookie, true);
+  } catch (error) {
+    return { success: false, message: 'Invalid session. Please log in again.' };
+  }
+  
+  const user = { uid: decodedToken.uid, email: decodedToken.email };
+  if (!user || !user.uid || !user.email) {
+    return { success: false, message: 'Could not verify user identity.' };
+  }
+  
+  const { firestore } = initializeFirebase();
+
+  const tenantId = sanitizeTenantId(tenantName);
+  const tenantRef = doc(firestore, 'tenants', tenantId);
+
+  // Set tenant data
+  const tenantData = {
+    id: tenantId,
+    name: tenantName,
+    ownerUid: user.uid,
+    createdAt: serverTimestamp(),
+    plan: 'free',
+    status: 'active',
+  };
+  setDocumentNonBlocking(tenantRef, tenantData, {});
+
+  // Add the owner as a user in the tenant's subcollection
+  const userRef = doc(firestore, `tenants/${tenantId}/users`, user.uid);
+  const userData = {
+    id: user.uid,
+    email: user.email,
+    role: 'admin',
+    tenantId: tenantId,
+    status: 'active',
+  };
+  setDocumentNonBlocking(userRef, userData, {});
+  
+  // Note: The /users/{uid} mapping is only strictly needed if rules depend on it
+  // before the user is a member of any tenant. Given our flow, it's good practice.
+  const userTenantMappingRef = doc(firestore, 'users', user.uid);
+  setDocumentNonBlocking(userTenantMappingRef, { tenantId: tenantId }, { merge: true });
+
+  revalidatePath('/dashboard/settings');
+  return { success: true, message: 'Tenant created successfully.' };
+}
+
+/**
+ * Switches the active tenant for the current user.
+ * This is a client-side concept, so we just confirm the tenant exists.
+ */
+export async function switchTenant(tenantId: string): Promise<{ success: boolean; message: string }> {
+  if (!tenantId) {
+    return { success: false, message: 'Tenant ID is required.' };
+  }
+  // In a real app, you might verify the user has access to this tenant before switching.
+  // For now, we'll trust the client, since the UI only shows tenants they own.
+  // The action itself doesn't need to do anything but return success.
+  // The client will handle localStorage and router refresh.
+  return { success: true, message: 'Tenant switch initiated.' };
+}
+
+/**
+ * Updates the status of a tenant.
+ */
+export async function updateTenantStatus(tenantId: string, status: 'active' | 'inactive' | 'deleted'): Promise<{ success: boolean; message: string }> {
+    if (!tenantId) {
+        return { success: false, message: 'Tenant ID is required.' };
+    }
+
+    const { firestore } = initializeFirebase();
+    const tenantRef = doc(firestore, 'tenants', tenantId);
+
+    // Using setDocumentNonBlocking with merge to update the status
+    setDocumentNonBlocking(tenantRef, { status: status }, { merge: true });
+
+    revalidatePath('/dashboard/settings');
+    return { success: true, message: 'Tenant status updated.' };
+}
