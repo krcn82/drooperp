@@ -6,6 +6,7 @@ import './globals.css';
 import {cn} from '@/lib/utils';
 import {Toaster} from '@/components/ui/toaster';
 import {FirebaseClientProvider} from '@/firebase';
+import { AiStateProvider } from '@/hooks/use-ai-state';
 
 const fontBody = Inter({
   subsets: ['latin'],
@@ -33,8 +34,10 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className={cn('font-body antialiased', fontBody.variable, fontHeadline.variable)}>
         <FirebaseClientProvider>
-          {children}
-          <Toaster />
+          <AiStateProvider>
+            {children}
+            <Toaster />
+          </AiStateProvider>
         </FirebaseClientProvider>
       </body>
     </html>

@@ -24,10 +24,24 @@ const ChatInputSchema = z.object({
 });
 export type ChatInput = z.infer<typeof ChatInputSchema>;
 
+const SuggestionSchema = z.object({
+    title: z.string().describe('A short, actionable title for the suggestion.'),
+    description: z.string().describe('A longer description of the suggestion and why it is being made.'),
+    action: z.string().describe('A unique key for the action to be taken, e.g., "apply_discount_slow_moving".'),
+    items: z.array(z.object({
+        id: z.string(),
+        name: z.string(),
+    })).optional().describe('An optional list of items related to the suggestion.'),
+});
+export type Suggestion = z.infer<typeof SuggestionSchema>;
+
+
 const ChatOutputSchema = z.object({
-  response: z.string(),
+  response: z.string().describe('The textual response from the AI assistant.'),
+  suggestion: SuggestionSchema.optional().describe('An optional structured suggestion for the user to act upon.'),
 });
 export type ChatOutput = z.infer<typeof ChatOutputSchema>;
+
 
 // Tool to get a sales summary
 const getSalesSummary = ai.defineTool(
@@ -80,38 +94,47 @@ const getSalesSummary = ai.defineTool(
 const getProductPerformance = ai.defineTool(
   {
     name: 'getProductPerformance',
-    description: 'Provides performance data for products, such as top sellers.',
+    description: 'Provides performance data for products, such as top sellers or slow-moving items.',
     inputSchema: z.object({
       tenantId: z.string(),
-      limit: z.number().default(3),
+      limit: z.number().default(5),
+      orderBy: z.enum(['top', 'bottom']).default('top'),
+      periodDays: z.number().default(30),
     }),
     outputSchema: z.object({
-      topProducts: z.array(z.object({ name: z.string(), quantity: z.number() })),
+      products: z.array(z.object({ id: z.string(), name: z.string(), quantity: z.number() })),
     }),
   },
-  async ({ tenantId, limit }) => {
-    const transactionsRef = firestoreAdmin.collection(`tenants/${tenantId}/transactions`);
-    const snapshot = await transactionsRef.get();
+  async ({ tenantId, limit, orderBy, periodDays }) => {
+    const sinceDate = new Date();
+    sinceDate.setDate(sinceDate.getDate() - periodDays);
+    const sinceTimestamp = Timestamp.fromDate(sinceDate);
 
-    const productQuantities: Record<string, { name: string, quantity: number }> = {};
+    const transactionsRef = firestoreAdmin.collection(`tenants/${tenantId}/transactions`);
+    const snapshot = await transactionsRef.where('timestamp', '>=', sinceTimestamp).get();
+
+    const productQuantities: Record<string, { id: string; name: string, quantity: number }> = {};
 
     snapshot.forEach(doc => {
-      const items = doc.data().items as { name: string; qty: number }[] | undefined;
+      const items = doc.data().items as { productId: string; name: string; qty: number }[] | undefined;
       if (items) {
         items.forEach(item => {
-          if (productQuantities[item.name]) {
-            productQuantities[item.name].quantity += item.qty;
+          const id = item.productId || item.name; // Fallback to name if id is not present
+          if (productQuantities[id]) {
+            productQuantities[id].quantity += item.qty;
           } else {
-            productQuantities[item.name] = { name: item.name, quantity: item.qty };
+            productQuantities[id] = { id: id, name: item.name, quantity: item.qty };
           }
         });
       }
     });
 
-    const sortedProducts = Object.values(productQuantities).sort((a, b) => b.quantity - a.quantity);
+    const sortedProducts = Object.values(productQuantities).sort((a, b) => {
+        return orderBy === 'top' ? b.quantity - a.quantity : a.quantity - b.quantity;
+    });
     
     return {
-      topProducts: sortedProducts.slice(0, limit),
+      products: sortedProducts.slice(0, limit),
     };
   }
 );
@@ -133,6 +156,8 @@ Your goal is to assist users with their questions about the ERP, their data, and
 Be concise and helpful. You can use markdown to format your responses.
 
 If a user asks about sales or product performance, use the provided tools to get the data.
+If you identify a clear opportunity, like slow-moving products, provide a structured suggestion for the user to act upon. For example, suggest applying a discount to slow-moving items.
+
 The current tenant ID is: {{{tenantId}}}. Always pass this to the tools.
 
 Here is the conversation history:
@@ -154,6 +179,6 @@ const chatFlow = ai.defineFlow(
   },
   async input => {
     const {output} = await prompt(input);
-    return { response: output!.response };
+    return output!;
   }
 );

@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CreditCard, ShoppingCart, QrCode, X, Plus, Minus, Barcode, WifiOff, Camera, Search } from 'lucide-react';
+import { CreditCard, ShoppingCart, QrCode, X, Plus, Minus, Barcode, WifiOff, Camera, Search, Bot } from 'lucide-react';
 import { useUser } from '@/firebase';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -14,6 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 import Quagga from '@ericblade/quagga2';
 import QRCode from 'qrcode.react';
 import { recordTransaction } from './actions';
+import { useAiState } from '@/hooks/use-ai-state';
 
 type Product = {
   id: string;
@@ -50,6 +51,7 @@ export default function PosPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const scannerInitialized = useRef(false);
+  const { setChatOpen, setPrefilledMessage } = useAiState();
 
   useEffect(() => {
     setIsClient(true);
@@ -64,6 +66,11 @@ export default function PosPage() {
     };
   }, []);
 
+  const handleAskAi = () => {
+    setPrefilledMessage('Analyze my recent sales performance.');
+    setChatOpen(true);
+  };
+  
   const addToCart = (product: Product) => {
     setCart(prevCart => {
       const existingItem = prevCart.find(item => item.productId === product.id);
@@ -255,8 +262,14 @@ export default function PosPage() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Cart and Checkout */}
                 <Card className="flex flex-col">
-                  <CardHeader>
-                    <CardTitle>Current Order</CardTitle>
+                  <CardHeader className="flex flex-row justify-between items-start">
+                    <div>
+                        <CardTitle>Current Order</CardTitle>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={handleAskAi}>
+                        <Bot className="mr-2 h-4 w-4" />
+                        Ask AI
+                    </Button>
                   </CardHeader>
                   <CardContent className="flex-grow">
                     {cart.length > 0 ? (

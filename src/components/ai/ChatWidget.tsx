@@ -4,14 +4,16 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Bot, Send, Loader2, User as UserIcon, X } from 'lucide-react';
+import { Bot, Send, Loader2, User as UserIcon } from 'lucide-react';
 import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import { addDocumentNonBlocking } from '@/firebase';
 import { collection, query, orderBy, serverTimestamp } from 'firebase/firestore';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { sendChatMessage } from '@/app/dashboard/actions';
+import { sendChatMessage, ChatOutput } from '@/app/dashboard/actions';
+import { useAiState } from '@/hooks/use-ai-state';
+import AiSuggestionModal from './AiSuggestionModal';
 
 type Message = {
   id?: string;
@@ -21,20 +23,39 @@ type Message = {
 };
 
 export default function ChatWidget() {
-  const [isOpen, setIsOpen] = useState(false);
+  const { isChatOpen, setChatOpen, prefilledMessage, clearPrefilledMessage } = useAiState();
   const [message, setMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [tenantId, setTenantId] = useState<string | null>(null);
   const [chatId, setChatId] = useState<string | null>(null);
+  const { setSuggestion, clearSuggestion } = useAiState();
   
   const { user } = useUser();
   const firestore = useFirestore();
+  
+  useEffect(() => {
+    if (prefilledMessage) {
+        setMessage(prefilledMessage);
+        clearPrefilledMessage();
+    }
+  }, [prefilledMessage, clearPrefilledMessage]);
+  
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+        if ((e.ctrlKey || e.metaKey) && e.code === 'Space') {
+            e.preventDefault();
+            setChatOpen(!isChatOpen);
+        }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isChatOpen, setChatOpen]);
+
 
   useEffect(() => {
     const storedTenantId = localStorage.getItem('tenantId');
     if (storedTenantId) {
       setTenantId(storedTenantId);
-      // For simplicity, we'll use one chat session per user. A more complex app might manage multiple chats.
       setChatId(user ? `chat_${user.uid}` : 'chat_global');
     }
   }, [user]);
@@ -49,7 +70,6 @@ export default function ChatWidget() {
 
   useEffect(() => {
     if (scrollAreaRef.current) {
-        // A slight delay to allow the new message to render
         setTimeout(() => {
           const viewport = scrollAreaRef.current?.querySelector('div[data-radix-scroll-area-viewport]');
           if (viewport) {
@@ -62,7 +82,7 @@ export default function ChatWidget() {
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!message.trim() || !user || !tenantId || !chatId) return;
+    if (!message.trim() || !user || !tenantId || !chatId || !firestore) return;
 
     const userMessage: Message = {
       role: 'user',
@@ -78,13 +98,20 @@ export default function ChatWidget() {
 
     const result = await sendChatMessage(tenantId, chatId, message, messages || []);
     
-    if (result.success && result.response) {
-      const aiMessage: Message = {
-        role: 'model',
-        text: result.response,
-        timestamp: serverTimestamp(),
-      };
-      addDocumentNonBlocking(messagesRef, aiMessage);
+    if (result.success && result.output) {
+        const { response, suggestion } = result.output;
+        
+        const aiMessage: Message = {
+            role: 'model',
+            text: response,
+            timestamp: serverTimestamp(),
+        };
+        addDocumentNonBlocking(messagesRef, aiMessage);
+
+        if (suggestion) {
+            setSuggestion(suggestion);
+        }
+
     } else {
         const errorMessage: Message = {
             role: 'model',
@@ -105,7 +132,7 @@ export default function ChatWidget() {
 
   return (
     <>
-      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <Dialog open={isChatOpen} onOpenChange={setChatOpen}>
         <DialogContent className="sm:max-w-[425px] h-[70vh] flex flex-col p-0 gap-0">
           <DialogHeader className="p-4 border-b">
             <DialogTitle className="flex items-center gap-2">
@@ -129,7 +156,6 @@ export default function ChatWidget() {
                        'max-w-[75%] rounded-lg p-3 text-sm',
                        msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'
                    )}>
-                     {/* Basic markdown renderer */}
                      <div dangerouslySetInnerHTML={{ __html: msg.text.replace(/\n/g, '<br />').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') }} />
                    </div>
                    {msg.role === 'user' && (
@@ -170,13 +196,7 @@ export default function ChatWidget() {
         </DialogContent>
       </Dialog>
       
-      <Button
-        size="icon"
-        className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg bg-accent hover:bg-accent/90"
-        onClick={() => setIsOpen(true)}
-      >
-        <Bot className="h-7 w-7" />
-      </Button>
+      <AiSuggestionModal />
     </>
   );
 }

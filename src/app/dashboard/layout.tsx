@@ -14,6 +14,7 @@ import {
   FileDown,
   FileUp,
   CookingPot,
+  Bot,
 } from 'lucide-react';
 import {usePathname, useRouter} from 'next/navigation';
 
@@ -27,6 +28,7 @@ import {useAuth, useUser} from '@/firebase';
 import {useEffect} from 'react';
 import {onAuthStateChanged, signOut} from 'firebase/auth';
 import ChatWidget from '@/components/ai/ChatWidget';
+import { useAiState } from '@/hooks/use-ai-state';
 
 const navItems = [
   {href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard'},
@@ -44,6 +46,7 @@ export default function DashboardLayout({children}: {children: React.ReactNode})
   const auth = useAuth();
   const {user, isUserLoading} = useUser();
   const router = useRouter();
+  const { setChatOpen } = useAiState();
 
   useEffect(() => {
     if (isUserLoading) return;
@@ -55,7 +58,6 @@ export default function DashboardLayout({children}: {children: React.ReactNode})
   const handleLogout = async () => {
     if (auth) {
       await signOut(auth);
-      // The useEffect above will handle the redirect to /login
     }
   };
 
@@ -148,6 +150,10 @@ export default function DashboardLayout({children}: {children: React.ReactNode})
               </div>
             </form>
           </div>
+           <Button variant="ghost" size="icon" onClick={() => setChatOpen(true)}>
+             <Bot className="h-5 w-5" />
+             <span className="sr-only">Open AI Assistant</span>
+           </Button>
           <UserNav />
         </header>
         <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6 bg-background">
