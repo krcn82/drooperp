@@ -134,6 +134,11 @@ async function runChecksForTenant(firestore: admin.firestore.Firestore, tenantId
     await checkIntegrationErrors(firestore, tenantId, rules, createUniqueNotification);
     await checkBestSellerSpike(firestore, tenantId, rules, createUniqueNotification);
     await checkLowStock(firestore, tenantId, rules, createUniqueNotification);
+
+    // New payment and cash drawer checks
+    await checkStripeErrors(firestore, tenantId, createUniqueNotification);
+    await checkBankomatErrors(firestore, tenantId, createUniqueNotification);
+    await checkStaleCashDrawers(firestore, tenantId, createUniqueNotification);
     
   } catch (error) {
     console.error(`Failed to run checks for tenant ${tenantId}:`, error);
@@ -234,5 +239,71 @@ async function checkLowStock(firestore: admin.firestore.Firestore, tenantId: str
             'alert'
         );
         await addAuditLog(firestore, tenantId, 'lowStock', { productId: doc.id, productName: product.name, quantity: product.quantity, threshold: rules.lowStockThreshold });
+    }
+}
+
+/**
+ * Checks for a high number of Stripe errors in the last hour.
+ */
+async function checkStripeErrors(firestore: admin.firestore.Firestore, tenantId: string, createNotification: Function) {
+    const oneHourAgo = Timestamp.fromMillis(Date.now() - 60 * 60 * 1000);
+    const errorLogsSnapshot = await firestore.collection(`tenants/${tenantId}/auditLogs`)
+        .where('type', '==', 'stripePaymentIntent')
+        .where('result', '==', 'error')
+        .where('timestamp', '>=', oneHourAgo)
+        .get();
+
+    const errorCount = errorLogsSnapshot.size;
+    const stripeErrorThreshold = 3; 
+
+    if (errorCount > stripeErrorThreshold) {
+        await createNotification(
+            'Stripe Payment Alert',
+            'Stripe connection unstable. Multiple payment errors detected in the last hour.',
+            'alert'
+        );
+        await addAuditLog(firestore, tenantId, 'stripeConnectionUnstable', { errorCount });
+    }
+}
+
+/**
+ * Checks for Bankomat terminal communication errors in the last 15 minutes.
+ */
+async function checkBankomatErrors(firestore: admin.firestore.Firestore, tenantId: string, createNotification: Function) {
+    const fifteenMinutesAgo = Timestamp.fromMillis(Date.now() - 15 * 60 * 1000);
+    const errorLogsSnapshot = await firestore.collection(`tenants/${tenantId}/auditLogs`)
+        .where('type', '==', 'devicePaymentStart')
+        .where('result', '==', 'error')
+        .where('timestamp', '>=', fifteenMinutesAgo)
+        .get();
+
+    if (!errorLogsSnapshot.empty) {
+        await createNotification(
+            'Bankomat Payment Alert',
+            'Bankomat device offline. Could not communicate with the local payment bridge.',
+            'alert'
+        );
+        await addAuditLog(firestore, tenantId, 'bankomatOffline', { errorCount: errorLogsSnapshot.size });
+    }
+}
+
+/**
+ * Checks for cash drawers that have been open for more than 12 hours.
+ */
+async function checkStaleCashDrawers(firestore: admin.firestore.Firestore, tenantId: string, createNotification: Function) {
+    const twelveHoursAgo = Timestamp.fromMillis(Date.now() - 12 * 60 * 60 * 1000);
+    const staleDrawersSnapshot = await firestore.collection(`tenants/${tenantId}/cashRegisters`)
+        .where('status', '==', 'open')
+        .where('openedAt', '<', twelveHoursAgo)
+        .get();
+
+    for (const doc of staleDrawersSnapshot.docs) {
+        const drawer = doc.data();
+        await createNotification(
+            'Cash Drawer Alert',
+            `Cash drawer opened by ${drawer.cashierName} is still open after 12 hours. Please close the session.`,
+            'alert'
+        );
+        await addAuditLog(firestore, tenantId, 'staleCashDrawer', { cashRegisterId: doc.id, cashierName: drawer.cashierName });
     }
 }
