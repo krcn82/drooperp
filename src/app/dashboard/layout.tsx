@@ -8,45 +8,88 @@ import {
   Settings,
   ShoppingCart,
   LogOut,
-  FileText,
-  Users as UsersIcon,
   ShieldCheck,
   FileDown,
   FileUp,
   CookingPot,
   Bot,
+  Calendar,
+  Contact,
 } from 'lucide-react';
 import {usePathname, useRouter} from 'next/navigation';
-
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetTrigger} from '@/components/ui/sheet';
 import {cn} from '@/lib/utils';
 import {UserNav} from '@/components/common/user-nav';
 import {Database} from 'lucide-react';
-import {useAuth, useUser} from '@/firebase';
-import {useEffect} from 'react';
-import {onAuthStateChanged, signOut} from 'firebase/auth';
+import {useAuth, useUser, useFirestore, useDoc, useMemoFirebase} from '@/firebase';
+import {useEffect, useState, useMemo} from 'react';
+import {signOut} from 'firebase/auth';
 import ChatWidget from '@/components/ai/ChatWidget';
-import { useAiState } from '@/hooks/use-ai-state';
+import {useAiState} from '@/hooks/use-ai-state';
+import { doc } from 'firebase/firestore';
 
-const navItems = [
-  {href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard'},
-  {href: '/dashboard/pos', icon: ShoppingCart, label: 'Point of Sale'},
-  {href: '/kds', icon: CookingPot, label: 'Kitchen Display'},
-  {href: '/dashboard/reports', icon: LineChart, label: 'Reports'},
-  {href: '/dashboard/assets', icon: FileUp, label: 'Invoices & Assets'},
-  {href: '/dashboard/datev-export', icon: FileDown, label: 'DATEV Export'},
-  {href: '/dashboard/gdpr', icon: ShieldCheck, label: 'GDPR Tools'},
-  {href: '/dashboard/settings', icon: Settings, label: 'Settings'},
+const allNavItems = [
+  {id: 'dashboard', href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard'},
+  {id: 'pos', href: '/dashboard/pos', icon: ShoppingCart, label: 'Point of Sale'},
+  {id: 'kds', href: '/kds', icon: CookingPot, label: 'Kitchen Display'},
+  {id: 'reports', href: '/dashboard/reports', icon: LineChart, label: 'Reports'},
+  {id: 'assets', href: '/dashboard/assets', icon: FileUp, label: 'Invoices & Assets'},
+  {id: 'datev', href: '/dashboard/datev-export', icon: FileDown, label: 'DATEV Export'},
+  {id: 'calendar', href: '/dashboard/calendar', icon: Calendar, label: 'Calendar', disabled: true},
+  {id: 'kiosk', href: '/kiosk', icon: Contact, label: 'Kiosk', disabled: true },
+  {id: 'gdpr', href: '/dashboard/gdpr', icon: ShieldCheck, label: 'GDPR Tools'},
+  {id: 'settings', href: '/dashboard/settings', icon: Settings, label: 'Settings'},
 ];
+
+type ModuleSettings = {
+  posShop: boolean;
+  posRestaurant: boolean;
+  calendar: boolean;
+  kiosk: boolean;
+  aiAssistant: boolean;
+};
 
 export default function DashboardLayout({children}: {children: React.ReactNode}) {
   const pathname = usePathname();
   const auth = useAuth();
+  const firestore = useFirestore();
   const {user, isUserLoading} = useUser();
   const router = useRouter();
-  const { setChatOpen } = useAiState();
+  const {setChatOpen} = useAiState();
+  const [tenantId, setTenantId] = useState<string | null>(null);
+
+  useEffect(() => {
+      const storedTenantId = localStorage.getItem('tenantId');
+      if (storedTenantId) {
+          setTenantId(storedTenantId);
+      } else if (user && !isUserLoading) {
+          router.push('/login'); // Or a tenant selection page
+      }
+  }, [user, isUserLoading, router]);
+
+  const moduleSettingsRef = useMemoFirebase(() => {
+    if (!firestore || !tenantId) return null;
+    return doc(firestore, `tenants/${tenantId}/settings/modules`);
+  }, [firestore, tenantId]);
+
+  const { data: moduleSettings, isLoading: areModulesLoading } = useDoc<ModuleSettings>(moduleSettingsRef);
+  
+  const navItems = useMemo(() => {
+    if (areModulesLoading || !moduleSettings) return allNavItems.filter(item => ['dashboard', 'reports', 'assets', 'datev', 'gdpr', 'settings'].includes(item.id)); // show core items while loading
+    
+    const visibleItems = new Set(['dashboard', 'reports', 'assets', 'datev', 'gdpr', 'settings']);
+    
+    if (moduleSettings.posShop || moduleSettings.posRestaurant) visibleItems.add('pos');
+    if (moduleSettings.posRestaurant) visibleItems.add('kds');
+    if (moduleSettings.calendar) visibleItems.add('calendar');
+    if (moduleSettings.kiosk) visibleItems.add('kiosk');
+    
+    return allNavItems.filter(item => visibleItems.has(item.id));
+    
+  }, [moduleSettings, areModulesLoading]);
+
 
   useEffect(() => {
     if (isUserLoading) return;
@@ -58,6 +101,7 @@ export default function DashboardLayout({children}: {children: React.ReactNode})
   const handleLogout = async () => {
     if (auth) {
       await signOut(auth);
+      router.push('/login');
     }
   };
 
@@ -74,14 +118,16 @@ export default function DashboardLayout({children}: {children: React.ReactNode})
     </Link>
   );
 
-  if (isUserLoading || !user) {
-    return (
-       <div className="flex h-screen w-full items-center justify-center">
-        <Database className="h-8 w-8 animate-spin text-primary" />
-       </div>
-    )
-  }
+  const isLoading = isUserLoading || !user || areModulesLoading;
 
+  if (isLoading) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center">
+        <Database className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+  
   return (
     <div className="grid min-h-screen w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
       <div className="hidden border-r bg-card md:block">
@@ -150,15 +196,17 @@ export default function DashboardLayout({children}: {children: React.ReactNode})
               </div>
             </form>
           </div>
-           <Button variant="ghost" size="icon" onClick={() => setChatOpen(true)}>
-             <Bot className="h-5 w-5" />
-             <span className="sr-only">Open AI Assistant</span>
-           </Button>
+           {moduleSettings?.aiAssistant && (
+             <Button variant="ghost" size="icon" onClick={() => setChatOpen(true)}>
+               <Bot className="h-5 w-5" />
+               <span className="sr-only">Open AI Assistant</span>
+             </Button>
+           )}
           <UserNav />
         </header>
         <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6 bg-background">
           {children}
-          <ChatWidget />
+          {moduleSettings?.aiAssistant && <ChatWidget />}
         </main>
       </div>
     </div>

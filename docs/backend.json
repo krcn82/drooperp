@@ -246,6 +246,34 @@
         }
       }
     },
+    "ModuleSettings": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Module Settings",
+      "type": "object",
+      "description": "Represents the enabled/disabled state of various application modules for a tenant.",
+      "properties": {
+        "posShop": {
+          "type": "boolean",
+          "description": "Point of Sale (Shop)"
+        },
+        "posRestaurant": {
+          "type": "boolean",
+          "description": "Point of Sale (Restaurant)"
+        },
+        "calendar": {
+          "type": "boolean",
+          "description": "Calendar Module"
+        },
+        "kiosk": {
+          "type": "boolean",
+          "description": "Kiosk Mode"
+        },
+        "aiAssistant": {
+          "type": "boolean",
+          "description": "AI Assistant"
+        }
+      }
+    },
     "ChatMessage": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "ChatMessage",
@@ -313,11 +341,17 @@
       },
       "description": "Sub-collection for products within a tenant."
     },
-    "/tenants/{tenantId}/settings/{settingId}": {
+    "/tenants/{tenantId}/settings/general": {
       "schema": {
         "$ref": "#/entities/Settings"
       },
-      "description": "Sub-collection for settings within a tenant."
+      "description": "Document for general settings within a tenant."
+    },
+    "/tenants/{tenantId}/settings/modules": {
+      "schema": {
+        "$ref": "#/entities/ModuleSettings"
+      },
+      "description": "Document for module settings within a tenant."
     },
     "/global/plans/{planId}": {
       "schema": {

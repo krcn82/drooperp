@@ -63,6 +63,17 @@ export async function createNewTenant(tenantName: string): Promise<{ success: bo
   };
   setDocumentNonBlocking(userRef, userData, {});
   
+  // Set default module settings
+  const modulesRef = doc(firestore, `tenants/${tenantId}/settings/modules`);
+  const defaultModules = {
+      posShop: true,
+      posRestaurant: false,
+      calendar: false,
+      kiosk: false,
+      aiAssistant: true,
+  };
+  setDocumentNonBlocking(modulesRef, defaultModules, {});
+  
   // Note: The /users/{uid} mapping is only strictly needed if rules depend on it
   // before the user is a member of any tenant. Given our flow, it's good practice.
   const userTenantMappingRef = doc(firestore, 'users', user.uid);
@@ -80,10 +91,6 @@ export async function switchTenant(tenantId: string): Promise<{ success: boolean
   if (!tenantId) {
     return { success: false, message: 'Tenant ID is required.' };
   }
-  // In a real app, you might verify the user has access to this tenant before switching.
-  // For now, we'll trust the client, since the UI only shows tenants they own.
-  // The action itself doesn't need to do anything but return success.
-  // The client will handle localStorage and router refresh.
   return { success: true, message: 'Tenant switch initiated.' };
 }
 
@@ -97,10 +104,25 @@ export async function updateTenantStatus(tenantId: string, status: 'active' | 'i
 
     const { firestore } = initializeFirebase();
     const tenantRef = doc(firestore, 'tenants', tenantId);
-
-    // Using setDocumentNonBlocking with merge to update the status
     setDocumentNonBlocking(tenantRef, { status: status }, { merge: true });
 
     revalidatePath('/dashboard/settings');
     return { success: true, message: 'Tenant status updated.' };
+}
+
+/**
+ * Updates the module settings for a tenant.
+ */
+export async function updateModuleSettings(tenantId: string, modules: any): Promise<{ success: boolean; message: string }> {
+    if (!tenantId) {
+        return { success: false, message: 'Tenant ID is required.' };
+    }
+
+    const { firestore } = initializeFirebase();
+    const modulesRef = doc(firestore, `tenants/${tenantId}/settings/modules`);
+
+    setDocumentNonBlocking(modulesRef, modules, { merge: true });
+    
+    revalidatePath('/dashboard/settings');
+    return { success: true, message: 'Module settings updated.' };
 }
