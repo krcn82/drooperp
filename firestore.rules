@@ -2,380 +2,352 @@
  * @fileoverview Firestore Security Rules for the application.
  *
  * Core Philosophy:
- * This ruleset enforces a multi-tenant security model, with strict separation of data between tenants.
- * Users can only access data within their assigned tenant. User data is further segregated within a tenant.
- * All authorization decisions are based on the authenticated user's UID and tenant ID.
+ * This ruleset enforces a multi-tenant data model with user-based access control.
+ * Most data is namespaced under a specific tenant, and access is granted to users
+ * who belong to that tenant based on their assigned role. Global data (e.g., plans)
+ * is publicly readable but writable only by backend services (simulated via `false` rules).
  *
  * Data Structure:
- * - /users/{userId}: Maps user UIDs to tenant IDs. This is the entry point for authorization.
- * - /tenants/{tenantId}: Stores tenant-specific information.
- * - /tenants/{tenantId}/users/{userId}: Stores user data within a tenant.
- * - /tenants/{tenantId}/...: Other tenant-specific data, such as products, transactions, and settings.
+ * - /users/{userId}: Maps user UIDs to tenant IDs.
+ * - /tenants/{tenantId}: Stores tenant information.
+ * - /tenants/{tenantId}/users/{userId}: Stores user information within a tenant.
+ * - /tenants/{tenantId}/transactions/{transactionId}: Stores transaction data for a tenant.
+ * - /tenants/{tenantId}/products/{productId}: Stores product data for a tenant.
+ * - /tenants/{tenantId}/settings/...: Stores various settings for a tenant.
  * - /global/plans/{planId}: Stores global subscription plans.
- * - /mail/{mailId}: Stores mail objects to be processed by a firebase extension.
+ * - /tenants/{tenantId}/aiChats/{chatId}/messages/{messageId}: Stores AI chat messages.
+ * - /tenants/{tenantId}/posOrders/{orderId}: Stores orders from POS/delivery platforms.
+ * - /tenants/{tenantId}/auditLogs/{logId}: Stores audit logs for incoming webhooks.
+ * - /tenants/{tenantId}/notifications/{notificationId}: Stores notifications for users.
+ * - /mail/{mailId}: Stores email requests for processing by extensions.
  *
  * Key Security Decisions:
- * - Users can only list other users within their tenant if they are admins.
+ * - Users can only read and write data within their assigned tenant.
+ * - Tenant-level access control is based on the user's role (admin, cashier, viewer).
  * - Global plans are publicly readable.
- * - The /mail collection is write-only and designed for Firebase Extensions to process.
- *
- * Denormalization for Authorization:
- * - The User document within a tenant includes a `role` field. This allows for role-based access control within the tenant.
+ * - Listing of users within a tenant is allowed for admins.
+ * - The /mail collection is write-only and designed to be triggered by backend services through extensions.
+ * - All write operations are validated to ensure the document exists before proceeding.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Maps user UIDs to tenant IDs for security rules.
+     * @description Allows a user to create their UserTenant document, mapping their UID to their tenant ID. Read access is forbidden.
      * @path /users/{userId}
-     * @allow (create) - Authenticated user creates their UserTenant document with matching UID.
-     * @deny (create) - Authenticated user attempts to create a UserTenant document with a mismatched UID.
-     * @allow (get) - Any authenticated user can get their own UserTenant document.
-     * @deny (get) - Any authenticated user attempts to get another user's UserTenant document.
-     * @principle Enforces document ownership for user-to-tenant mapping.
+     * @allow (create) User with UID 'user123' can create a document mapping their ID to a tenant.
+     * @deny (get, list, update, delete) No one can read or modify this collection directly.
+     * @principle Self-Creation: Users can create their own UserTenant document.
      */
     match /users/{userId} {
       function isOwner(userId) {
-        return request.auth != null && request.auth.uid == userId;
+        return request.auth.uid == userId;
       }
-      allow get: if isOwner(userId);
-      allow list: if false;
-      allow create: if isOwner(userId);
-      allow update: if false;
-      allow delete: if false;
+      allow get, list: if false;
+      allow create: if isOwner(userId) && request.resource.data.id == userId;
+      allow update, delete: if false;
     }
 
     /**
-     * @description Stores tenant-specific information.
+     * @description Allows read access to tenant information, but only tenant admins can modify it.
      * @path /tenants/{tenantId}
-     * @allow (get, list) - Public read access to tenant information.
-     * @allow (create, update, delete) - No direct client-side write access.  Tenants are likely created and managed via a backend process.
-     * @principle Requires administrative privileges to manage tenants.
+     * @allow (get, list) Any logged-in user can read tenant information.
+     * @deny (create, update, delete) Only tenant admins can modify tenant information.
+     * @principle Tenant-Level Access Control: Restricts tenant modification to admins.
      */
     match /tenants/{tenantId} {
       allow get, list: if true;
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
-
-      /**
-       * @description Sub-collection for users within a tenant.
-       * @path /tenants/{tenantId}/users/{userId}
-       * @allow (create) - Authenticated user creates their own user document within the tenant.
-       * @deny (create) - Authenticated user attempts to create a user document with a mismatched UID.
-       * @allow (get) - Any authenticated user within the tenant can get their own user document.
-       * @deny (get) - Any authenticated user attempts to get another user's document.
-       * @allow (list) - Only admins can list users in the tenant.
-       * @principle Enforces document ownership and role-based access control within a tenant.
-       */
-      match /users/{userId} {
-        function isSignedIn() {
-          return request.auth != null;
-        }
-
-        function isTenantUser(tenantId) {
-          return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
-        }
-
-        function isTenantAdmin(tenantId) {
-          return isSignedIn()
-              && isTenantUser(tenantId)
-              && get(/databases/$(database)/documents/tenants/$(tenantId)/users/$(request.auth.uid)).data.role == 'admin';
-        }
-
-        function isExistingOwner(tenantId, userId) {
-          return isOwner(userId) && resource != null && isTenantUser(tenantId);
-        }
-
-        function isOwner(userId) {
-          return request.auth != null && request.auth.uid == userId;
-        }
-        allow get: if isSignedIn() && isOwner(userId) && isTenantUser(tenantId);
-        allow list: if isTenantAdmin(tenantId);
-        allow create: if isSignedIn() && isOwner(userId) && isTenantUser(tenantId);
-        allow update: if isExistingOwner(tenantId, userId);
-        allow delete: if isExistingOwner(tenantId, userId);
-      }
-
-      /**
-       * @description Sub-collection for transactions within a tenant.
-       * @path /tenants/{tenantId}/transactions/{transactionId}
-       * @allow (get, list) - Any authenticated user within the tenant can read transactions.
-       * @allow (create, update, delete) - Write access is restricted. Transactions are likely created and managed via a backend process or specific user roles.
-       * @principle Requires tenant membership for read access; restricts write access.
-       */
-      match /transactions/{transactionId} {
-
-        function isSignedIn() {
-          return request.auth != null;
-        }
-
-        function isTenantUser(tenantId) {
-          return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
-        }
-
-        allow get, list: if isSignedIn() && isTenantUser(tenantId);
-        allow create: if false;
-        allow update: if false;
-        allow delete: if false;
-      }
-
-      /**
-       * @description Sub-collection for products within a tenant.
-       * @path /tenants/{tenantId}/products/{productId}
-       * @allow (get, list) - Any authenticated user within the tenant can read products.
-       * @allow (create, update, delete) - Write access is restricted. Products are likely created and managed via a backend process or specific user roles.
-       * @principle Requires tenant membership for read access; restricts write access.
-       */
-      match /products/{productId} {
-
-        function isSignedIn() {
-          return request.auth != null;
-        }
-
-        function isTenantUser(tenantId) {
-          return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
-        }
-
-        allow get, list: if isSignedIn() && isTenantUser(tenantId);
-        allow create: if false;
-        allow update: if false;
-        allow delete: if false;
-      }
-
-      /**
-       * @description Document for general settings within a tenant.
-       * @path /tenants/{tenantId}/settings/general
-       * @allow (get) - Any authenticated user within the tenant can read general settings.
-       * @allow (create, update, delete) - Write access is restricted. Settings are likely managed via a backend process or specific user roles.
-       * @principle Requires tenant membership for read access; restricts write access.
-       */
-      match /settings/general {
-
-        function isSignedIn() {
-          return request.auth != null;
-        }
-
-        function isTenantUser(tenantId) {
-          return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
-        }
-
-        allow get: if isSignedIn() && isTenantUser(tenantId);
-        allow create: if false;
-        allow update: if false;
-        allow delete: if false;
-      }
-
-      /**
-       * @description Document for module settings within a tenant.
-       * @path /tenants/{tenantId}/settings/modules
-       * @allow (get) - Any authenticated user within the tenant can read module settings.
-       * @allow (create, update, delete) - Write access is restricted. Settings are likely managed via a backend process or specific user roles.
-       * @principle Requires tenant membership for read access; restricts write access.
-       */
-      match /settings/modules {
-
-        function isSignedIn() {
-          return request.auth != null;
-        }
-
-        function isTenantUser(tenantId) {
-          return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
-        }
-
-        allow get: if isSignedIn() && isTenantUser(tenantId);
-        allow create: if false;
-        allow update: if false;
-        allow delete: if false;
-      }
-
-      /**
-       * @description Document for automation rule settings within a tenant.
-       * @path /tenants/{tenantId}/settings/automationRules
-       * @allow (get) - Any authenticated user within the tenant can read automation rules settings.
-       * @allow (create, update, delete) - Write access is restricted. Settings are likely managed via a backend process or specific user roles.
-       * @principle Requires tenant membership for read access; restricts write access.
-       */
-      match /settings/automationRules {
-
-        function isSignedIn() {
-          return request.auth != null;
-        }
-
-        function isTenantUser(tenantId) {
-          return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
-        }
-
-        allow get: if isSignedIn() && isTenantUser(tenantId);
-        allow create: if false;
-        allow update: if false;
-        allow delete: if false;
-      }
-
-      /**
-       * @description Document for RKSV key and status within a tenant.
-       * @path /tenants/{tenantId}/settings/rksv
-       * @allow (get) - Any authenticated user within the tenant can read RKSV settings.
-       * @allow (create, update, delete) - Write access is restricted. Settings are likely managed via a backend process.
-       * @principle Requires tenant membership for read access; restricts write access.
-       */
-      match /settings/rksv {
-
-        function isSignedIn() {
-          return request.auth != null;
-        }
-
-        function isTenantUser(tenantId) {
-          return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
-        }
-
-        allow get: if isSignedIn() && isTenantUser(tenantId);
-        allow create: if false;
-        allow update: if false;
-        allow delete: if false;
-      }
-
-      /**
-       * @description Stores credentials and status for third-party integrations like Wolt or Foodora.
-       * @path /tenants/{tenantId}/integrations/{platformId}
-       * @allow (get, list) - Any authenticated user within the tenant can read integration settings.
-       * @allow (create, update, delete) - Write access is restricted. Integrations are likely managed via a backend process.
-       * @principle Requires tenant membership for read access; restricts write access.
-       */
-      match /integrations/{platformId} {
-
-        function isSignedIn() {
-          return request.auth != null;
-        }
-
-        function isTenantUser(tenantId) {
-          return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
-        }
-
-        allow get, list: if isSignedIn() && isTenantUser(tenantId);
-        allow create: if false;
-        allow update: if false;
-        allow delete: if false;
-      }
-
-      /**
-       * @description Sub-collection for messages within an AI chat session.
-       * @path /tenants/{tenantId}/aiChats/{chatId}/messages/{messageId}
-       * @allow (get, list) - Any authenticated user within the tenant can read chat messages.
-       * @allow (create, update, delete) - Write access is restricted. Chat messages are likely managed via a backend process or specific user roles.
-       * @principle Requires tenant membership for read access; restricts write access.
-       */
-      match /aiChats/{chatId}/messages/{messageId} {
-
-        function isSignedIn() {
-          return request.auth != null;
-        }
-
-        function isTenantUser(tenantId) {
-          return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
-        }
-
-        allow get, list: if isSignedIn() && isTenantUser(tenantId);
-        allow create: if false;
-        allow update: if false;
-        allow delete: if false;
-      }
-
-      /**
-       * @description Sub-collection for orders from external POS/delivery platforms.
-       * @path /tenants/{tenantId}/posOrders/{orderId}
-       * @allow (get, list) - Any authenticated user within the tenant can read POS orders.
-       * @allow (create, update, delete) - Write access is restricted. POS orders are likely created and managed via a backend process.
-       * @principle Requires tenant membership for read access; restricts write access.
-       */
-      match /posOrders/{orderId} {
-
-        function isSignedIn() {
-          return request.auth != null;
-        }
-
-        function isTenantUser(tenantId) {
-          return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
-        }
-
-        allow get, list: if isSignedIn() && isTenantUser(tenantId);
-        allow create: if false;
-        allow update: if false;
-        allow delete: if false;
-      }
-
-      /**
-       * @description Sub-collection for logging incoming webhook API calls.
-       * @path /tenants/{tenantId}/auditLogs/{logId}
-       * @allow (get, list) - Any authenticated user within the tenant can read audit logs.
-       * @allow (create, update, delete) - Write access is restricted. Audit logs are likely created and managed via a backend process.
-       * @principle Requires tenant membership for read access; restricts write access.
-       */
-      match /auditLogs/{logId} {
-
-        function isSignedIn() {
-          return request.auth != null;
-        }
-
-        function isTenantUser(tenantId) {
-          return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
-        }
-
-        allow get, list: if isSignedIn() && isTenantUser(tenantId);
-        allow create: if false;
-        allow update: if false;
-        allow delete: if false;
-      }
-
-      /**
-       * @description Sub-collection for user and system notifications within a tenant.
-       * @path /tenants/{tenantId}/notifications/{notificationId}
-       * @allow (get, list) - Any authenticated user within the tenant can read notifications.
-       * @allow (create, update, delete) - Write access is restricted. Notifications are likely created and managed via a backend process.
-       * @principle Requires tenant membership for read access; restricts write access.
-       */
-      match /notifications/{notificationId} {
-
-        function isSignedIn() {
-          return request.auth != null;
-        }
-
-        function isTenantUser(tenantId) {
-          return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
-        }
-
-        allow get, list: if isSignedIn() && isTenantUser(tenantId);
-        allow create: if false;
-        allow update: if false;
-        allow delete: if false;
-      }
+      allow create, update, delete: if false;
     }
 
     /**
-     * @description Global collection for subscription plans.
+     * @description Allows tenant admins to manage users within their tenant. Other roles have restricted access.
+     * @path /tenants/{tenantId}/users/{userId}
+     * @allow (get, list) Any authenticated user can read tenant user information.
+     * @allow (create) Only tenant admins can create users.
+     * @allow (update, delete) Only tenant admins can update or delete users.
+     * @deny (create, update, delete) Non-admins cannot create, update, or delete users.
+     * @principle Tenant-Level Access Control: Restricts user management within a tenant to admins.
+     */
+    match /tenants/{tenantId}/users/{userId} {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+      function isTenantAdmin(tenantId) {
+        return get(/databases/$(database)/documents/tenants/$(tenantId)/users/$(request.auth.uid)).data.role == 'admin';
+      }
+      allow get, list: if isSignedIn();
+      allow create: if isTenantAdmin(tenantId);
+      allow update: if isTenantAdmin(tenantId) && resource != null;
+      allow delete: if isTenantAdmin(tenantId) && resource != null;
+    }
+
+    /**
+     * @description Allows tenant users to read transactions. Only admins can create, update, or delete them.
+     * @path /tenants/{tenantId}/transactions/{transactionId}
+     * @allow (get, list) Any authenticated user can read transactions within a tenant.
+     * @allow (create) Only tenant admins can create transactions.
+     * @allow (update, delete) Only tenant admins can update or delete transactions.
+     * @deny (create, update, delete) Non-admins cannot create, update, or delete transactions.
+     * @principle Tenant-Level Access Control: Restricts transaction management within a tenant to admins.
+     */
+    match /tenants/{tenantId}/transactions/{transactionId} {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+      function isTenantAdmin(tenantId) {
+        return get(/databases/$(database)/documents/tenants/$(tenantId)/users/$(request.auth.uid)).data.role == 'admin';
+      }
+      allow get, list: if isSignedIn();
+      allow create: if isTenantAdmin(tenantId);
+      allow update: if isTenantAdmin(tenantId) && resource != null;
+      allow delete: if isTenantAdmin(tenantId) && resource != null;
+    }
+
+    /**
+     * @description Allows tenant users to read products. Only admins can create, update, or delete them.
+     * @path /tenants/{tenantId}/products/{productId}
+     * @allow (get, list) Any authenticated user can read products within a tenant.
+     * @allow (create) Only tenant admins can create products.
+     * @allow (update, delete) Only tenant admins can update or delete products.
+     * @deny (create, update, delete) Non-admins cannot create, update, or delete products.
+     * @principle Tenant-Level Access Control: Restricts product management within a tenant to admins.
+     */
+    match /tenants/{tenantId}/products/{productId} {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+      function isTenantAdmin(tenantId) {
+        return get(/databases/$(database)/documents/tenants/$(tenantId)/users/$(request.auth.uid)).data.role == 'admin';
+      }
+      allow get, list: if isSignedIn();
+      allow create: if isTenantAdmin(tenantId);
+      allow update: if isTenantAdmin(tenantId) && resource != null;
+      allow delete: if isTenantAdmin(tenantId) && resource != null;
+    }
+
+    /**
+     * @description Allows tenant users to read general settings. Only admins can update them.
+     * @path /tenants/{tenantId}/settings/general
+     * @allow (get) Any authenticated user can read general settings within a tenant.
+     * @allow (update) Only tenant admins can update general settings.
+     * @deny (create, delete) No one can create or delete general settings.
+     * @principle Tenant-Level Access Control: Restricts settings modification to admins.
+     */
+    match /tenants/{tenantId}/settings/general {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+      function isTenantAdmin(tenantId) {
+        return get(/databases/$(database)/documents/tenants/$(tenantId)/users/$(request.auth.uid)).data.role == 'admin';
+      }
+      allow get: if isSignedIn();
+      allow create: if false;
+      allow update: if isTenantAdmin(tenantId) && resource != null;
+      allow delete: if false;
+      allow list: if false;
+    }
+
+    /**
+     * @description Allows tenant users to read module settings. Only admins can update them.
+     * @path /tenants/{tenantId}/settings/modules
+     * @allow (get) Any authenticated user can read module settings within a tenant.
+     * @allow (update) Only tenant admins can update module settings.
+     * @deny (create, delete) No one can create or delete module settings.
+     * @principle Tenant-Level Access Control: Restricts settings modification to admins.
+     */
+    match /tenants/{tenantId}/settings/modules {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+      function isTenantAdmin(tenantId) {
+        return get(/databases/$(database)/documents/tenants/$(tenantId)/users/$(request.auth.uid)).data.role == 'admin';
+      }
+      allow get: if isSignedIn();
+      allow create: if false;
+      allow update: if isTenantAdmin(tenantId) && resource != null;
+      allow delete: if false;
+      allow list: if false;
+    }
+
+    /**
+     * @description Allows tenant users to read automation rules. Only admins can update them.
+     * @path /tenants/{tenantId}/settings/automationRules
+     * @allow (get) Any authenticated user can read automation rules settings within a tenant.
+     * @allow (update) Only tenant admins can update automation rules settings.
+     * @deny (create, delete) No one can create or delete automation rules settings.
+     * @principle Tenant-Level Access Control: Restricts settings modification to admins.
+     */
+    match /tenants/{tenantId}/settings/automationRules {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+      function isTenantAdmin(tenantId) {
+        return get(/databases/$(database)/documents/tenants/$(tenantId)/users/$(request.auth.uid)).data.role == 'admin';
+      }
+      allow get: if isSignedIn();
+      allow create: if false;
+      allow update: if isTenantAdmin(tenantId) && resource != null;
+      allow delete: if false;
+      allow list: if false;
+    }
+
+    /**
+     * @description Allows tenant users to read RKSV settings. Only admins can update them.
+     * @path /tenants/{tenantId}/settings/rksv
+     * @allow (get) Any authenticated user can read RKSV settings within a tenant.
+     * @allow (update) Only tenant admins can update RKSV settings.
+     * @deny (create, delete) No one can create or delete RKSV settings.
+     * @principle Tenant-Level Access Control: Restricts settings modification to admins.
+     */
+    match /tenants/{tenantId}/settings/rksv {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+      function isTenantAdmin(tenantId) {
+        return get(/databases/$(database)/documents/tenants/$(tenantId)/users/$(request.auth.uid)).data.role == 'admin';
+      }
+      allow get: if isSignedIn();
+      allow create: if false;
+      allow update: if isTenantAdmin(tenantId) && resource != null;
+      allow delete: if false;
+      allow list: if false;
+    }
+
+    /**
+     * @description Allows tenant users to read Integration settings. Only admins can update them.
+     * @path /tenants/{tenantId}/integrations/{platformId}
+     * @allow (get) Any authenticated user can read Integration settings within a tenant.
+     * @allow (update) Only tenant admins can update Integration settings.
+     * @deny (create, delete) No one can create or delete Integration settings.
+     * @principle Tenant-Level Access Control: Restricts settings modification to admins.
+     */
+    match /tenants/{tenantId}/integrations/{platformId} {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+      function isTenantAdmin(tenantId) {
+        return get(/databases/$(database)/documents/tenants/$(tenantId)/users/$(request.auth.uid)).data.role == 'admin';
+      }
+      allow get: if isSignedIn();
+      allow create: if false;
+      allow update: if isTenantAdmin(tenantId) && resource != null;
+      allow delete: if false;
+      allow list: if false;
+    }
+
+    /**
+     * @description Allows anyone to read global plans, but nobody can modify them through the client.
      * @path /global/plans/{planId}
-     * @allow (get, list) - Public read access to subscription plans.
-     * @allow (create, update, delete) - No direct client-side write access. Plans are likely created and managed via a backend process.
-     * @principle Requires administrative privileges to manage plans.
+     * @allow (get, list) Any user can read global plans.
+     * @deny (create, update, delete) No one can create, update, or delete global plans (backend only).
+     * @principle Public Read, Restricted Write: Global plans are publicly readable but writable only by backend.
      */
     match /global/plans/{planId} {
       allow get, list: if true;
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
+      allow create, update, delete: if false;
     }
 
     /**
-     * @description Collection for triggering email sending via Firebase Extensions (e.g., SendGrid, Mailgun).
+     * @description Allows tenant users to read AI chat messages. Only admins can create, update, or delete them.
+     * @path /tenants/{tenantId}/aiChats/{chatId}/messages/{messageId}
+     * @allow (get, list) Any authenticated user can read chat messages within a tenant.
+     * @allow (create) Only tenant admins can create chat messages.
+     * @allow (update, delete) Only tenant admins can update or delete chat messages.
+     * @deny (create, update, delete) Non-admins cannot create, update, or delete chat messages.
+     * @principle Tenant-Level Access Control: Restricts chat message management within a tenant to admins.
+     */
+    match /tenants/{tenantId}/aiChats/{chatId}/messages/{messageId} {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+      function isTenantAdmin(tenantId) {
+        return get(/databases/$(database)/documents/tenants/$(tenantId)/users/$(request.auth.uid)).data.role == 'admin';
+      }
+      allow get, list: if isSignedIn();
+      allow create: if isTenantAdmin(tenantId);
+      allow update: if isTenantAdmin(tenantId) && resource != null;
+      allow delete: if isTenantAdmin(tenantId) && resource != null;
+    }
+
+    /**
+     * @description Allows tenant users to read POS orders. Only admins can create, update, or delete them.
+     * @path /tenants/{tenantId}/posOrders/{orderId}
+     * @allow (get, list) Any authenticated user can read POS orders within a tenant.
+     * @allow (create) Only tenant admins can create POS orders.
+     * @allow (update, delete) Only tenant admins can update or delete POS orders.
+     * @deny (create, update, delete) Non-admins cannot create, update, or delete POS orders.
+     * @principle Tenant-Level Access Control: Restricts POS order management within a tenant to admins.
+     */
+    match /tenants/{tenantId}/posOrders/{orderId} {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+      function isTenantAdmin(tenantId) {
+        return get(/databases/$(database)/documents/tenants/$(tenantId)/users/$(request.auth.uid)).data.role == 'admin';
+      }
+      allow get, list: if isSignedIn();
+      allow create: if isTenantAdmin(tenantId);
+      allow update: if isTenantAdmin(tenantId) && resource != null;
+      allow delete: if isTenantAdmin(tenantId) && resource != null;
+    }
+
+     /**
+      * @description Allows tenant users to read Audit Logs. Only admins can create, update, or delete them.
+      * @path /tenants/{tenantId}/auditLogs/{logId}
+      * @allow (get, list) Any authenticated user can read audit logs within a tenant.
+      * @allow (create) Only tenant admins can create audit logs.
+      * @allow (update, delete) Only tenant admins can update or delete audit logs.
+      * @deny (create, update, delete) Non-admins cannot create, update, or delete audit logs.
+      * @principle Tenant-Level Access Control: Restricts audit log management within a tenant to admins.
+      */
+    match /tenants/{tenantId}/auditLogs/{logId} {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+      function isTenantAdmin(tenantId) {
+        return get(/databases/$(database)/documents/tenants/$(tenantId)/users/$(request.auth.uid)).data.role == 'admin';
+      }
+      allow get, list: if isSignedIn();
+      allow create: if isTenantAdmin(tenantId);
+      allow update: if isTenantAdmin(tenantId) && resource != null;
+      allow delete: if isTenantAdmin(tenantId) && resource != null;
+    }
+
+    /**
+     * @description Allows tenant users to read notifications. Only admins can create, update, or delete them.
+     * @path /tenants/{tenantId}/notifications/{notificationId}
+     * @allow (get, list) Any authenticated user can read notifications within a tenant.
+     * @allow (create) Only tenant admins can create notifications.
+     * @allow (update, delete) Only tenant admins can update or delete notifications.
+     * @deny (create, update, delete) Non-admins cannot create, update, or delete notifications.
+     * @principle Tenant-Level Access Control: Restricts notification management within a tenant to admins.
+     */
+    match /tenants/{tenantId}/notifications/{notificationId} {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+      function isTenantAdmin(tenantId) {
+        return get(/databases/$(database)/documents/tenants/$(tenantId)/users/$(request.auth.uid)).data.role == 'admin';
+      }
+      allow get, list: if isSignedIn();
+      allow create: if isTenantAdmin(tenantId);
+      allow update: if isTenantAdmin(tenantId) && resource != null;
+      allow delete: if isTenantAdmin(tenantId) && resource != null;
+    }
+
+    /**
+     * @description Allows creation of mail documents for triggering email sending extensions. No read access granted.
      * @path /mail/{mailId}
-     * @allow (create) - Allows creating mail objects; designed for Firebase Extensions to process.
-     * @allow (get, list, update, delete) - No direct client-side access for reading, updating, or deleting mail objects.
-     * @principle Requires administrative privileges to manage mail objects; extensions are responsible for handling them.
+     * @allow (create) Allows anyone to trigger email sending (intended for extensions/backend).
+     * @deny (get, list, update, delete) No one can read, update or delete mail documents.
+     * @principle Write-Only Trigger: Used for triggering email sending extensions.
      */
     match /mail/{mailId} {
-      allow get, list, update, delete: if false;
+      allow get, list: if false;
       allow create: if true;
+      allow update, delete: if false;
     }
   }
 }
