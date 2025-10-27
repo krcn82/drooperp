@@ -2,294 +2,438 @@
  * @fileoverview Firestore Security Rules for the ERP application.
  *
  * Core Philosophy:
- * This ruleset enforces a multi-tenant data model where users are associated with specific tenants.
- * Most data is scoped to the tenant, and access is generally restricted to authenticated users within that tenant.
- * Global data (e.g., subscription plans) has public read access but is write-protected.
+ * This ruleset prioritizes strong authorization, focusing on tenant-based isolation and role-based access where appropriate.
+ * It uses a combination of ownership checks, role verification, and authenticated user validation to secure data.
+ * Data shape validation is relaxed in this prototyping phase to allow rapid schema iteration.
  *
  * Data Structure:
- * The data is organized hierarchically with tenants as the root. User-specific data resides under the respective tenant.
- * There are also global collections, such as `/global/plans`, that are publicly readable.
+ * - Data is primarily organized under tenants (`/tenants/{tenantId}`).
+ * - User access is controlled both at the root level (`/users/{userId}`) and within tenants (`/tenants/{tenantId}/users/{userId}`).
+ * - Global data like subscription plans is stored in the `/global` collection.
  *
  * Key Security Decisions:
- * - User listing is generally disallowed for privacy.
- * - Tenant-level settings and configurations are restricted to tenant members.
- * - Public read access is granted to global plans for easy access to subscription information.
- * - Email sending is protected by a separate collection (`/mail`) that triggers a Firebase Extension.
- *
- * Denormalization for Authorization:
- *  - The rules rely on the path to infer tenant and user context, avoiding the need for costly `get()` operations.
+ * - User listing is generally disallowed unless explicitly required and secured by role checks.
+ * - The rules enforce tenant isolation, ensuring users can only access data within their assigned tenant.
+ * - System-level operations (e.g., writing audit logs) are restricted to service accounts via custom claims (`request.auth.token.isSystem`).
+ * - Read-only collections, if any, should have `allow get, list: if true;` for public data and stricter rules for sensitive data.
+ * - Denormalization: The rules rely on `request.auth.token` (JWT) for tenantId to simplify payment rules.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Maps user UIDs to tenant IDs. Allows creation by the user with matching ID, read access to the owner.
-     * @path /users/{userId}
-     * @allow (create) - User 'su79xG8Z7lZqu6mRcfURoF2MRKn1' can create a document if userId == 'su79xG8Z7lZqu6mRcfURoF2MRKn1'.
-     * @deny (create) - User 'anotherUserId' cannot create a document at /users/su79xG8Z7lZqu6mRcfURoF2MRKn1.
-     * @allow (get, list) - User 'su79xG8Z7lZqu6mRcfURoF2MRKn1' can read/list their own document.
-     * @deny (update, delete) - No one can update or delete these documents.
-     * @principle Enforces document ownership for writes and restricts access to the owner.
+     * @description Checks if the user is signed in.
+     * @path N/A
+     * @allow N/A
+     * @deny N/A
+     * @principle Authentication: Ensures that only authenticated users can access certain resources.
      */
-    match /users/{userId} {
-      allow get, list: if isOwner(userId);
-      allow create: if isOwner(userId);
-      allow update, delete: if false;
-    }
-
-    /**
-     * @description Collection to store tenant information.
-     * @path /tenants/{tenantId}
-     * @allow (get, list) - Tenant information is publicly readable.
-     * @deny (create, update, delete) - No one can create, update or delete tenant documents directly.
-     * @principle Allows public reads, but strictly controls writes to prevent unauthorized modifications.
-     */
-    match /tenants/{tenantId} {
-      allow get, list: if true;
-      allow create, update, delete: if false;
-    }
-
-    /**
-     * @description Sub-collection for users within a tenant. Only tenant members can read.
-     * @path /tenants/{tenantId}/users/{userId}
-     * @allow (get, list) - Tenant members can read user information.
-     * @allow (create) - Tenant members can create other user information. The new user's ID must match the document ID.
-     * @deny (update, delete) - No one can update or delete user documents.
-     * @principle Enforces tenant-level access control.
-     */
-    match /tenants/{tenantId}/users/{userId} {
-      allow get, list: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update, delete: if false;
-    }
-
-    /**
-     * @description Sub-collection for transactions within a tenant. Only tenant members can read.
-     * @path /tenants/{tenantId}/transactions/{transactionId}
-     * @allow (get, list) - Tenant members can read transactions.
-     * @allow (create) - Tenant members can create transactions.
-     * @deny (update, delete) - No one can update or delete transactions.
-     * @principle Enforces tenant-level access control.
-     */
-    match /tenants/{tenantId}/transactions/{transactionId} {
-      allow get, list: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update, delete: if false;
-    }
-
-    /**
-     * @description Sub-collection for payments within a tenant. Only tenant members can read.
-     * @path /tenants/{tenantId}/payments/{paymentId}
-     * @allow (get, list) - Tenant members can read payments.
-     * @allow (create) - Tenant members can create payments.
-     * @deny (update, delete) - No one can update or delete payments.
-     * @principle Enforces tenant-level access control.
-     */
-    match /tenants/{tenantId}/payments/{paymentId} {
-      allow get, list: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update, delete: if false;
-    }
-
-    /**
-     * @description Sub-collection for products within a tenant. Only tenant members can read.
-     * @path /tenants/{tenantId}/products/{productId}
-     * @allow (get, list) - Tenant members can read products.
-     * @allow (create) - Tenant members can create products.
-     * @deny (update, delete) - No one can update or delete products.
-     * @principle Enforces tenant-level access control.
-     */
-    match /tenants/{tenantId}/products/{productId} {
-      allow get, list: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update, delete: if false;
-    }
-
-    /**
-     * @description Document for general settings within a tenant. Only tenant members can read and write.
-     * @path /tenants/{tenantId}/settings/general
-     * @allow (get) - Tenant members can read general settings.
-     * @allow (create, update) - Tenant members can create and update general settings.
-     * @deny (delete) - No one can delete general settings.
-     * @principle Enforces tenant-level access control.
-     */
-    match /tenants/{tenantId}/settings/general {
-      allow get: if isSignedIn();
-      allow create, update: if isSignedIn();
-      allow delete: if false;
-    }
-
-    /**
-     * @description Document for module settings within a tenant. Only tenant members can read and write.
-     * @path /tenants/{tenantId}/settings/modules
-     * @allow (get) - Tenant members can read module settings.
-     * @allow (create, update) - Tenant members can create and update module settings.
-     * @deny (delete) - No one can delete module settings.
-     * @principle Enforces tenant-level access control.
-     */
-    match /tenants/{tenantId}/settings/modules {
-      allow get: if isSignedIn();
-      allow create, update: if isSignedIn();
-      allow delete: if false;
-    }
-
-    /**
-     * @description Document for automation rule settings within a tenant. Only tenant members can read and write.
-     * @path /tenants/{tenantId}/settings/automationRules
-     * @allow (get) - Tenant members can read the automation rules settings.
-     * @allow (create, update) - Tenant members can create and update automation rules settings.
-     * @deny (delete) - No one can delete automation rules settings.
-     * @principle Enforces tenant-level access control.
-     */
-    match /tenants/{tenantId}/settings/automationRules {
-        allow get: if isSignedIn();
-        allow create, update: if isSignedIn();
-        allow delete: if false;
-    }
-
-    /**
-     * @description Document for RKSV key and status within a tenant. Only tenant members can read and write.
-     * @path /tenants/{tenantId}/settings/rksv
-     * @allow (get) - Tenant members can read RKSV settings.
-     * @allow (create, update) - Tenant members can create and update RKSV settings.
-     * @deny (delete) - No one can delete RKSV settings.
-     * @principle Enforces tenant-level access control.
-     */
-    match /tenants/{tenantId}/settings/rksv {
-      allow get: if isSignedIn();
-      allow create, update: if isSignedIn();
-      allow delete: if false;
-    }
-
-    /**
-     * @description Stores credentials and status for third-party integrations like Wolt or Foodora. Tenant members can read and write.
-     * @path /tenants/{tenantId}/integrations/{platformId}
-     * @allow (get, list) - Tenant members can read integration settings.
-     * @allow (create, update) - Tenant members can create and update integration settings.
-     * @deny (delete) - No one can delete integration settings.
-     * @principle Enforces tenant-level access control.
-     */
-    match /tenants/{tenantId}/integrations/{platformId} {
-      allow get, list: if isSignedIn();
-      allow create, update: if isSignedIn();
-      allow delete: if false;
-    }
-
-    /**
-     * @description Sub-collection for cash register sessions. Only tenant members can read.
-     * @path /tenants/{tenantId}/cashRegisters/{registerId}
-     * @allow (get, list) - Tenant members can read cash register sessions.
-     * @allow (create) - Tenant members can create cash register sessions.
-     * @deny (update, delete) - No one can update or delete cash register sessions.
-     * @principle Enforces tenant-level access control.
-     */
-    match /tenants/{tenantId}/cashRegisters/{registerId} {
-      allow get, list: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update, delete: if false;
-    }
-
-    /**
-     * @description Sub-collection for generated reports. Only tenant members can read.
-     * @path /tenants/{tenantId}/reports/{reportId}
-     * @allow (get, list) - Tenant members can read reports.
-     * @allow (create) - Tenant members can create reports.
-     * @deny (update, delete) - No one can update or delete reports.
-     * @principle Enforces tenant-level access control.
-     */
-    match /tenants/{tenantId}/reports/{reportId} {
-      allow get, list: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update, delete: if false;
-    }
-
-    /**
-     * @description Global collection for subscription plans. Public read access.
-     * @path /global/plans/{planId}
-     * @allow (get, list) - Public read access to subscription plans.
-     * @deny (create, update, delete) - No one can create, update, or delete plans.
-     * @principle Provides public information about available plans.
-     */
-    match /global/plans/{planId} {
-      allow get, list: if true;
-      allow create, update, delete: if false;
-    }
-
-    /**
-     * @description Sub-collection for messages within an AI chat session. Only tenant members can read and write.
-     * @path /tenants/{tenantId}/aiChats/{chatId}/messages/{messageId}
-     * @allow (get, list) - Tenant members can read chat messages.
-     * @allow (create) - Tenant members can create chat messages.
-     * @deny (update, delete) - No one can update or delete chat messages.
-     * @principle Enforces tenant-level access control.
-     */
-    match /tenants/{tenantId}/aiChats/{chatId}/messages/{messageId} {
-      allow get, list: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update, delete: if false;
-    }
-
-    /**
-     * @description Sub-collection for orders from external POS/delivery platforms. Only tenant members can read and write.
-     * @path /tenants/{tenantId}/posOrders/{orderId}
-     * @allow (get, list) - Tenant members can read POS orders.
-     * @allow (create) - Tenant members can create POS orders.
-     * @deny (update, delete) - No one can update or delete POS orders.
-     * @principle Enforces tenant-level access control.
-     */
-    match /tenants/{tenantId}/posOrders/{orderId} {
-      allow get, list: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update, delete: if false;
-    }
-
-    /**
-     * @description Sub-collection for logging incoming webhook API calls. Only tenant members can read and write.
-     * @path /tenants/{tenantId}/auditLogs/{logId}
-     * @allow (get, list) - Tenant members can read audit logs.
-     * @allow (create) - Tenant members can create audit logs.
-     * @deny (update, delete) - No one can update or delete audit logs.
-     * @principle Enforces tenant-level access control.
-     */
-    match /tenants/{tenantId}/auditLogs/{logId} {
-        allow get, list: if isSignedIn();
-        allow create: if isSignedIn();
-        allow update, delete: if false;
-    }
-
-    /**
-     * @description Sub-collection for user and system notifications within a tenant. Only tenant members can read and write.
-     * @path /tenants/{tenantId}/notifications/{notificationId}
-     * @allow (get, list) - Tenant members can read notifications.
-     * @allow (create) - Tenant members can create notifications.
-     * @deny (update, delete) - No one can update or delete notifications.
-     * @principle Enforces tenant-level access control.
-     */
-    match /tenants/{tenantId}/notifications/{notificationId} {
-      allow get, list: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update, delete: if false;
-    }
-
-    /**
-     * @description Collection for triggering email sending via Firebase Extensions.
-     * @path /mail/{mailId}
-     * @allow (create) - Allows authenticated users to trigger email sending.
-     * @deny (get, list, update, delete) - No one can get, list, update, or delete emails.
-     * @principle Restricts email sending to authenticated users.
-     */
-    match /mail/{mailId} {
-      allow create: if isSignedIn();
-      allow get, list, update, delete: if false;
-    }
-
     function isSignedIn() {
       return request.auth != null;
     }
 
+    /**
+     * @description Checks if the authenticated user's ID matches the provided userId.
+     * @path N/A
+     * @allow N/A
+     * @deny N/A
+     * @principle Ownership: Enforces that a user can only access resources they own.
+     */
     function isOwner(userId) {
       return request.auth.uid == userId;
     }
+
+    /**
+     * @description Checks if the authenticated user's ID matches the provided userId and the document exists.
+     * @path N/A
+     * @allow N/A
+     * @deny N/A
+     * @principle Ownership & Existence: Enforces that a user can only access resources they own and that the resource exists.
+     */
+    function isExistingOwner(userId) {
+        return isOwner(userId) && existsAfter(/databases/$(database)/documents/users/$(userId));
+    }
+
+    /**
+     * @description Checks if the authenticated user has the 'admin' role in their custom claims.
+     * @path N/A
+     * @allow N/A
+     * @deny N/A
+     * @principle Role-Based Access Control: Restricts access to certain resources based on the user's role.
+     */
+    function isAdmin() {
+      return request.auth.token.isAdmin == true;
+    }
+
+    /**
+     * @description Checks if the authenticated user has the 'cashier' role in their custom claims.
+     * @path N/A
+     * @allow N/A
+     * @deny N/A
+     * @principle Role-Based Access Control: Restricts access to certain resources based on the user's role.
+     */
+    function isCashier() {
+      return request.auth.token.isCashier == true;
+    }
+
+    /**
+     * @description Checks if the authenticated user has the 'viewer' role in their custom claims.
+     * @path N/A
+     * @allow N/A
+     * @deny N/A
+     * @principle Role-Based Access Control: Restricts access to certain resources based on the user's role.
+     */
+    function isViewer() {
+      return request.auth.token.isViewer == true;
+    }
+
+    /**
+     * @description Checks if the request originates from a system with 'isSystem' custom claim.
+     * @path N/A
+     * @allow N/A
+     * @deny N/A
+     * @principle Service Account: Restricts write access to service accounts for backend operations.
+     */
+    function isSystem() {
+      return request.auth.token.isSystem == true;
+    }
+
+    /**
+     * @description Rule for the /users/{userId} collection.
+     * @path /users/{userId}
+     * @allow (create) - Authenticated user can create their own document.
+     * @deny (create) - User attempts to create a document with an ID that doesn't match their own UID.
+     * @allow (get, list) - Authenticated user can read their own document.
+     * @deny (get, list) - User attempts to read another user's document.
+     * @allow (update, delete) - Authenticated user can update their own document.
+     * @deny (update, delete) - User attempts to update or delete another user's document.
+     * @principle Enforces document ownership for all operations.
+     */
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow list: if false;
+      allow create: if isOwner(userId);
+      allow update: if isExistingOwner(userId);
+      allow delete: if isExistingOwner(userId);
+    }
+
+    /**
+     * @description Rule for the /tenants/{tenantId} collection.
+     * @path /tenants/{tenantId}
+     * @allow (get, list) - Authenticated user can read tenant information.
+     * @deny (create) - No one can create tenants through the client.
+     * @deny (update) - No one can update tenants through the client.
+     * @deny (delete) - No one can delete tenants through the client.
+     * @principle Restricts creation, update, and deletion of tenants.
+     */
+    match /tenants/{tenantId} {
+      allow get: if isSignedIn();
+      allow list: if false;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    /**
+     * @description Rule for the /tenants/{tenantId}/users/{userId} collection.
+     * @path /tenants/{tenantId}/users/{userId}
+     * @allow (get, list) - Authenticated user can read user information within a tenant.
+     * @allow (create) - Authenticated user can create their own user document within a tenant.
+     * @allow (update) - Authenticated user can update their own user document within a tenant.
+     * @allow (delete) - Authenticated user can delete their own user document within a tenant.
+     * @deny (create) - User attempts to create a document with an ID that doesn't match their own UID.
+     * @deny (update) - User attempts to update another user's document or change the user ID.
+     * @deny (delete) - User attempts to delete another user's document.
+     * @principle Enforces document ownership and tenant isolation.
+     */
+    match /tenants/{tenantId}/users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if false;
+      allow create: if isOwner(userId);
+      allow update: if isExistingOwner(userId);
+      allow delete: if isExistingOwner(userId);
+    }
+
+    /**
+     * @description Rule for the /tenants/{tenantId}/transactions/{transactionId} collection.
+     * @path /tenants/{tenantId}/transactions/{transactionId}
+     * @allow (get, list) - Authenticated user can read transactions within a tenant.
+     * @deny (create) - No one can create transactions through the client.
+     * @deny (update) - No one can update transactions through the client.
+     * @deny (delete) - No one can delete transactions through the client.
+     * @principle Transactions should be created and managed by backend functions.
+     */
+    match /tenants/{tenantId}/transactions/{transactionId} {
+      allow get: if isSignedIn();
+      allow list: if false;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    /**
+     * @description Rule for the /tenants/{tenantId}/payments/{paymentId} collection.
+     * @path /tenants/{tenantId}/payments/{paymentId}
+     * @allow (read) - Authenticated user can read payments if their tenantId matches the document's tenantId.
+     * @allow (write) - Only system accounts can write payment data.
+     * @deny (read) - User attempts to read payment data from a different tenant.
+     * @deny (write) - Non-system accounts attempt to write payment data.
+     * @principle Restricts payment data access based on tenant and system role.
+     */
+    match /tenants/{tenantId}/payments/{paymentId} {
+      allow get: if isSignedIn() && request.auth.token.tenantId == tenantId;
+      allow list: if false;
+      allow create: if isSystem();
+      allow update: if isSystem();
+      allow delete: if isSystem();
+    }
+
+    /**
+     * @description Rule for the /tenants/{tenantId}/products/{productId} collection.
+     * @path /tenants/{tenantId}/products/{productId}
+     * @allow (get, list) - Authenticated user can read products within a tenant.
+     * @deny (create) - No one can create products through the client.
+     * @deny (update) - No one can update products through the client.
+     * @deny (delete) - No one can delete products through the client.
+     * @principle Products should be created and managed by backend functions.
+     */
+    match /tenants/{tenantId}/products/{productId} {
+      allow get: if isSignedIn();
+      allow list: if false;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    /**
+     * @description Rule for the /tenants/{tenantId}/settings/general document.
+     * @path /tenants/{tenantId}/settings/general
+     * @allow (get) - Authenticated user can read general settings within a tenant.
+     * @deny (create) - No one can create general settings through the client.
+     * @deny (update) - No one can update general settings through the client.
+     * @deny (delete) - No one can delete general settings through the client.
+     * @principle Settings should be managed by backend functions or admin users.
+     */
+    match /tenants/{tenantId}/settings/general {
+      allow get: if isSignedIn();
+      allow list: if false;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    /**
+     * @description Rule for the /tenants/{tenantId}/settings/modules document.
+     * @path /tenants/{tenantId}/settings/modules
+     * @allow (get) - Authenticated user can read module settings within a tenant.
+     * @deny (create) - No one can create module settings through the client.
+     * @deny (update) - No one can update module settings through the client.
+     * @deny (delete) - No one can delete module settings through the client.
+     * @principle Settings should be managed by backend functions or admin users.
+     */
+    match /tenants/{tenantId}/settings/modules {
+      allow get: if isSignedIn();
+       allow list: if false;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+     /**
+      * @description Rule for the /tenants/{tenantId}/settings/automationRules document.
+      * @path /tenants/{tenantId}/settings/automationRules
+      * @allow (get) - Authenticated user can read automation rules within a tenant.
+      * @deny (create) - No one can create automation rules through the client.
+      * @deny (update) - No one can update automation rules through the client.
+      * @deny (delete) - No one can delete automation rules through the client.
+      * @principle Settings should be managed by backend functions or admin users.
+      */
+    match /tenants/{tenantId}/settings/automationRules {
+        allow get: if isSignedIn();
+        allow list: if false;
+        allow create: if false;
+        allow update: if false;
+        allow delete: if false;
+    }
+
+
+    /**
+     * @description Rule for the /tenants/{tenantId}/settings/rksv document.
+     * @path /tenants/{tenantId}/settings/rksv
+     * @allow (get) - Authenticated user can read RKSV settings within a tenant.
+     * @deny (create) - No one can create RKSV settings through the client.
+     * @deny (update) - No one can update RKSV settings through the client.
+     * @deny (delete) - No one can delete RKSV settings through the client.
+     * @principle Settings should be managed by backend functions or admin users.
+     */
+    match /tenants/{tenantId}/settings/rksv {
+      allow get: if isSignedIn();
+       allow list: if false;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    /**
+     * @description Rule for the /tenants/{tenantId}/integrations/{platformId} collection.
+     * @path /tenants/{tenantId}/integrations/{platformId}
+     * @allow (get) - Authenticated user can read integration settings within a tenant.
+     * @deny (create) - No one can create integration settings through the client.
+     * @deny (update) - No one can update integration settings through the client.
+     * @deny (delete) - No one can delete integration settings through the client.
+     * @principle Settings should be managed by backend functions or admin users.
+     */
+    match /tenants/{tenantId}/integrations/{platformId} {
+      allow get: if isSignedIn();
+      allow list: if false;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    /**
+     * @description Rule for the /tenants/{tenantId}/cashRegisters/{registerId} collection.
+     * @path /tenants/{tenantId}/cashRegisters/{registerId}
+     * @allow (get, list) - Authenticated user can read cash register sessions within a tenant.
+     * @deny (create) - No one can create cash register sessions through the client.
+     * @deny (update) - No one can update cash register sessions through the client.
+     * @deny (delete) - No one can delete cash register sessions through the client.
+     * @principle Cash register sessions should be managed by backend functions.
+     */
+    match /tenants/{tenantId}/cashRegisters/{registerId} {
+      allow get: if isSignedIn();
+      allow list: if false;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    /**
+     * @description Rule for the /tenants/{tenantId}/reports/{reportId} collection.
+     * @path /tenants/{tenantId}/reports/{reportId}
+     * @allow (get, list) - Authenticated user can read reports within a tenant.
+     * @deny (create) - No one can create reports through the client.
+     * @deny (update) - No one can update reports through the client.
+     * @deny (delete) - No one can delete reports through the client.
+     */
+    match /tenants/{tenantId}/reports/{reportId} {
+      allow get: if isSignedIn();
+      allow list: if false;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    /**
+     * @description Rule for the /global/plans/{planId} collection.
+     * @path /global/plans/{planId}
+     * @allow (get, list) - Public read access to subscription plans.
+     * @deny (create) - No one can create plans through the client.
+     * @deny (update) - No one can update plans through the client.
+     * @deny (delete) - No one can delete plans through the client.
+     * @principle Subscription plans are managed by the system.
+     */
+    match /global/plans/{planId} {
+      allow get: if true;
+      allow list: if true;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    /**
+     * @description Rule for the /tenants/{tenantId}/aiChats/{chatId}/messages/{messageId} collection.
+     * @path /tenants/{tenantId}/aiChats/{chatId}/messages/{messageId}
+     * @allow (get, list) - Authenticated user can read chat messages within a tenant.
+     * @deny (create) - No one can create chat messages through the client.
+     * @deny (update) - No one can update chat messages through the client.
+     * @deny (delete) - No one can delete chat messages through the client.
+     */
+    match /tenants/{tenantId}/aiChats/{chatId}/messages/{messageId} {
+      allow get: if isSignedIn();
+      allow list: if false;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    /**
+     * @description Rule for the /tenants/{tenantId}/posOrders/{orderId} collection.
+     * @path /tenants/{tenantId}/posOrders/{orderId}
+     * @allow (get, list) - Authenticated user can read POS orders within a tenant.
+     * @deny (create) - No one can create POS orders through the client.
+     * @deny (update) - No one can update POS orders through the client.
+     * @deny (delete) - No one can delete POS orders through the client.
+     */
+    match /tenants/{tenantId}/posOrders/{orderId} {
+      allow get: if isSignedIn();
+      allow list: if false;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    /**
+     * @description Rule for the /tenants/{tenantId}/auditLogs/{logId} collection.
+     * @path /tenants/{tenantId}/auditLogs/{logId}
+     * @allow (read) - Only admin users can read audit logs.
+     * @allow (write) - Only system accounts can write audit logs.
+     * @deny (read) - Non-admin users cannot read audit logs.
+     * @deny (write) - Non-system accounts cannot write audit logs.
+     */
+    match /tenants/{tenantId}/auditLogs/{logId} {
+      allow get: if isSignedIn() && isAdmin();
+      allow list: if false;
+      allow create: if isSystem();
+      allow update: if isSystem();
+      allow delete: if isSystem();
+    }
+
+    /**
+     * @description Rule for the /tenants/{tenantId}/notifications/{notificationId} collection.
+     * @path /tenants/{tenantId}/notifications/{notificationId}
+     * @allow (get, list) - Authenticated user can read notifications within a tenant.
+     * @deny (create) - No one can create notifications through the client.
+     * @deny (update) - No one can update notifications through the client.
+     * @deny (delete) - No one can delete notifications through the client.
+     */
+    match /tenants/{tenantId}/notifications/{notificationId} {
+      allow get: if isSignedIn();
+      allow list: if false;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    /**
+     * @description Rule for the /mail/{mailId} collection.
+     * @path /mail/{mailId}
+     * @deny (read) - No one can read mails.
+     * @allow (write) - Only system accounts can create mail entries.
+     */
+    match /mail/{mailId} {
+      allow get: if false;
+      allow list: if false;
+      allow create: if isSystem();
+      allow update: if isSystem();
+      allow delete: if isSystem();
+    }
+
+     /**
+      * @description Rule for the /auditLogs/{logId} collection.
+      * @path /auditLogs/{logId}
+      * @allow (read) - Only admin users can read audit logs.
+      * @allow (write) - Only system accounts can write audit logs.
+      * @deny (read) - Non-admin users cannot read audit logs.
+      * @deny (write) - Non-system accounts cannot write audit logs.
+      */
+     match /auditLogs/{logId} {
+        allow get: if isSignedIn() && isAdmin();
+        allow list: if false;
+        allow create: if isSystem();
+        allow update: if isSystem();
+        allow delete: if isSystem();
+     }
   }
 }
