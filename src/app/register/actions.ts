@@ -60,18 +60,19 @@ export async function registerTenant(prevState: State, formData: FormData): Prom
   }
 
   const tenantId = sanitizeTenantId(tenantName);
+  const trimmedTenantName = tenantName.trim();
 
   // 2. Create the tenant document
   const tenantRef = doc(firestore, 'tenants', tenantId);
   const tenantData = {
-    name: tenantName.trim(),
+    id: tenantId,
+    name: trimmedTenantName,
     createdAt: serverTimestamp(),
     ownerEmail: email,
     ownerUid: user.uid,
-    plan: 'Free',
+    plan: 'free',
     status: 'active',
   };
-  // This function does not block and handles permission errors automatically
   setDocumentNonBlocking(tenantRef, tenantData, {});
 
   // 3. Create the user document within the tenant's subcollection
@@ -79,8 +80,6 @@ export async function registerTenant(prevState: State, formData: FormData): Prom
   const userData = {
     id: user.uid,
     email: user.email,
-    firstName: '',
-    lastName: '',
     role: 'admin',
     tenantId: tenantId,
   };
