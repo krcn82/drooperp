@@ -4,25 +4,62 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { DollarSign, Users, CreditCard, Calendar, ShoppingCart } from "lucide-react";
 import { useUser, useFirestore, useMemoFirebase } from "@/firebase";
-import { doc, collection } from "firebase/firestore";
+import { doc, collection, Timestamp } from "firebase/firestore";
 import { useDoc, useCollection } from "@/firebase";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 
+type Tenant = {
+  name: string;
+  plan: string;
+  createdAt: Timestamp;
+};
 
 export default function DashboardPage() {
-  // For now, we will use static data. We will connect to Firestore in a follow-up.
-  const tenantName = "Droop Inc.";
-  const totalSales = 0;
-  const activeUsers = 0;
-  const subscriptionPlan = "Free";
-  const creationDate = "2024-01-01";
-  const hasActivity = totalSales > 0 || activeUsers > 0;
+  const { user } = useUser();
+  const firestore = useFirestore();
+  const [tenantId, setTenantId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (user) {
+      const storedTenantId = localStorage.getItem('tenantId');
+      setTenantId(storedTenantId);
+    }
+  }, [user]);
+
+  const tenantRef = useMemoFirebase(() => {
+    if (!firestore || !tenantId) return null;
+    return doc(firestore, 'tenants', tenantId);
+  }, [firestore, tenantId]);
+  
+  const usersRef = useMemoFirebase(() => {
+    if (!firestore || !tenantId) return null;
+    return collection(firestore, `tenants/${tenantId}/users`);
+  }, [firestore, tenantId]);
+  
+  const transactionsRef = useMemoFirebase(() => {
+    if (!firestore || !tenantId) return null;
+    return collection(firestore, `tenants/${tenantId}/transactions`);
+  }, [firestore, tenantId]);
+
+  const { data: tenant, isLoading: isTenantLoading } = useDoc<Tenant>(tenantRef);
+  const { data: users, isLoading: areUsersLoading } = useCollection(usersRef);
+  const { data: transactions, isLoading: areTransactionsLoading } = useCollection(transactionsRef);
+
+  const tenantName = tenant?.name || "Droop Inc.";
+  const totalSales = transactions?.length || 0;
+  const activeUsers = users?.length || 0;
+  const subscriptionPlan = tenant?.plan || "Free";
+  const creationDate = tenant?.createdAt?.toDate()?.toLocaleDateString() || new Date().toLocaleDateString();
+  const hasActivity = totalSales > 0 || activeUsers > 1;
+
+  const isLoading = isTenantLoading || areUsersLoading || areTransactionsLoading;
 
   return (
     <>
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold font-headline tracking-tight">
-          Welcome, {tenantName}
+          Welcome, {isLoading ? '...' : tenantName}
         </h1>
       </div>
       
@@ -69,7 +106,7 @@ export default function DashboardPage() {
             <Calendar className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{new Date(creationDate).toLocaleDateString()}</div>
+            <div className="text-2xl font-bold">{creationDate}</div>
             <p className="text-xs text-muted-foreground">
               Your journey started here
             </p>
@@ -77,7 +114,7 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {!hasActivity && (
+      {!isLoading && !hasActivity && (
          <Card className="text-center">
             <CardHeader>
                 <CardTitle>No Activity Yet</CardTitle>

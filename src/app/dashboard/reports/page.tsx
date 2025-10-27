@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button';
 
 type TransactionItem = {
   name: string;
-  qty: number;
+  quantity: number; // Corrected from qty
   price: number;
   productId: string;
 };
@@ -22,7 +22,7 @@ type TransactionItem = {
 type Transaction = {
   id: string;
   items: TransactionItem[];
-  amountTotal: number; // Changed from totalAmount to match POS data
+  amountTotal: number;
   timestamp: Timestamp;
 };
 
@@ -79,19 +79,23 @@ const processTransactions = (transactions: Transaction[] | null): ProcessedData 
   // Product analysis
   const productSales = new Map<string, {name: string; quantity: number; revenue: number}>();
   transactions.forEach(tx => {
-    // The items in the transaction might not be in the format we expect.
-    // Let's check for productIds and quantities, or items array.
     if (Array.isArray(tx.items)) {
          tx.items.forEach(item => {
-            const existing = productSales.get(item.productId);
+            const id = item.productId || item.name;
+            const quantity = item.quantity || (item as any).qty || 0; // Handle both 'quantity' and 'qty'
+            const price = item.price || 0;
+
+            if (!id || !quantity) return;
+
+            const existing = productSales.get(id);
             if (existing) {
-                existing.quantity += item.qty;
-                existing.revenue += item.price * item.qty;
+                existing.quantity += quantity;
+                existing.revenue += price * quantity;
             } else {
-                productSales.set(item.productId, {
+                productSales.set(id, {
                 name: item.name,
-                quantity: item.qty,
-                revenue: item.price * item.qty,
+                quantity: quantity,
+                revenue: price * quantity,
                 });
             }
          });
