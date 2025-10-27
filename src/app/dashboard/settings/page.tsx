@@ -3,22 +3,24 @@
 import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { User, Shield, CreditCard, Users as UsersIcon, Building } from 'lucide-react';
+import { User, Shield, CreditCard, Users as UsersIcon, Building, Network } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import AccountSettings from './account-settings';
 import SubscriptionSettings from './subscription-settings';
 import UsersSettings from './users-settings';
 import TenantSettings from './tenant-settings';
+import IntegrationsSettings from './integrations';
 import Link from 'next/link';
 
 
-type SettingsView = 'account' | 'subscription' | 'users' | 'tenants';
+type SettingsView = 'account' | 'subscription' | 'users' | 'tenants' | 'integrations';
 
 const settingsNav = [
     { id: 'account', label: 'Account', icon: User },
     { id: 'subscription', label: 'Subscription', icon: CreditCard },
     { id: 'users', label: 'Users', icon: UsersIcon },
     { id: 'tenants', label: 'Tenants', icon: Building },
+    { id: 'integrations', label: 'Integrations', icon: Network },
 ] as const;
 
 
@@ -35,6 +37,8 @@ export default function SettingsPage() {
         return <UsersSettings />;
       case 'tenants':
         return <TenantSettings />;
+      case 'integrations':
+        return <IntegrationsSettings />;
       default:
         return <AccountSettings />;
     }
@@ -84,3 +88,5 @@ export default function SettingsPage() {
     </div>
   );
 }
+
+    

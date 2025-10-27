@@ -332,6 +332,34 @@
         }
       },
       "required": ["publicKey", "rksvActive", "lastSignature"]
+    },
+    "Integration": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Integration",
+      "type": "object",
+      "description": "Stores credentials and status for a third-party integration.",
+      "properties": {
+        "apiKey": {
+          "type": "string",
+          "description": "Encrypted API key for the third-party service."
+        },
+        "connectedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when the integration was connected."
+        },
+        "lastSync": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of the last successful data sync."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "disconnected", "error"],
+          "description": "The current status of the integration."
+        }
+      },
+      "required": ["apiKey", "connectedAt", "status"]
     }
   },
   "auth": {
@@ -388,6 +416,12 @@
       },
       "description": "Document for RKSV key and status within a tenant."
     },
+    "/tenants/{tenantId}/integrations/{platformId}": {
+      "schema": {
+        "$ref": "#/entities/Integration"
+      },
+      "description": "Stores credentials and status for third-party integrations like Wolt or Foodora."
+    },
     "/global/plans/{planId}": {
       "schema": {
         "$ref": "#/entities/Plan"
@@ -402,3 +436,5 @@
     }
   }
 }
+
+    
