@@ -26,6 +26,7 @@ export const registerTenant = functions.https.onCall(async (data, context) => {
     id: tenantId,
     name: tenantName,
     ownerEmail: ownerEmail,
+    ownerUid: uid,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
     plan: 'free',
   });
