@@ -14,7 +14,8 @@ import { Button } from '@/components/ui/button';
 
 type TransactionItem = {
   name: string;
-  quantity: number; // Corrected from qty
+  quantity: number; 
+  qty?: number; // For backward compatibility
   price: number;
   productId: string;
 };
@@ -47,7 +48,7 @@ const processTransactions = (transactions: Transaction[] | null): ProcessedData 
     };
   }
 
-  const totalRevenue = transactions.reduce((sum, tx) => sum + tx.amountTotal, 0);
+  const totalRevenue = transactions.reduce((sum, tx) => sum + (tx.amountTotal || 0), 0);
   const totalTransactions = transactions.length;
   const avgTicketSize = totalTransactions > 0 ? totalRevenue / totalTransactions : 0;
 
@@ -65,7 +66,7 @@ const processTransactions = (transactions: Transaction[] | null): ProcessedData 
   transactions.forEach(tx => {
     if (tx.timestamp && tx.timestamp.toDate() >= fourteenDaysAgo) {
       const dateStr = format(tx.timestamp.toDate(), 'yyyy-MM-dd');
-      dailyRevenue[dateStr] = (dailyRevenue[dateStr] || 0) + tx.amountTotal;
+      dailyRevenue[dateStr] = (dailyRevenue[dateStr] || 0) + (tx.amountTotal || 0);
     }
   });
 
@@ -82,7 +83,7 @@ const processTransactions = (transactions: Transaction[] | null): ProcessedData 
     if (Array.isArray(tx.items)) {
          tx.items.forEach(item => {
             const id = item.productId || item.name;
-            const quantity = item.quantity || (item as any).qty || 0; // Handle both 'quantity' and 'qty'
+            const quantity = item.quantity || item.qty || 0; // Handle both 'quantity' and 'qty'
             const price = item.price || 0;
 
             if (!id || !quantity) return;
@@ -280,5 +281,3 @@ export default function ReportsPage() {
     </div>
   );
 }
-
-    
