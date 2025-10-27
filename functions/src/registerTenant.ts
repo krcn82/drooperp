@@ -31,7 +31,7 @@ export const registerTenant = functions.https.onCall(async (data, context) => {
     plan: 'free',
   });
 
-  // 2. Create User Document in Tenant Subcollection
+  // 2. Create User Document in Tenant Subcollection using the user's UID
   const userRef = firestore.doc(`/tenants/${tenantId}/users/${uid}`);
   batch.set(userRef, {
     id: uid,
