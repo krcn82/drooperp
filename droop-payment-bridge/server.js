@@ -119,6 +119,45 @@ app.post('/api/payment/device/start', async (req, res) => {
   }
 });
 
+/**
+ * Endpoint to receive a daily summary and trigger a local print job.
+ */
+app.post('/api/payment/device/summary', async (req, res) => {
+  const { tenantId, totalCash, totalCard, totalBankomat, closingBalance } = req.body;
+
+  if (!tenantId || totalCash === undefined || totalCard === undefined || totalBankomat === undefined || closingBalance === undefined) {
+    logger.warn('Received invalid summary request', { body: req.body });
+    return res.status(400).json({ error: 'Missing required summary parameters.' });
+  }
+  
+  logger.info(`Received Z-Report summary for tenant ${tenantId}`, { body: req.body });
+
+  try {
+    // --- STUB for local printer integration ---
+    // Here you would add logic to connect to a local receipt printer
+    // (e.g., via serial port, USB, or a network-connected printer library)
+    // and print the Z-Report summary.
+    console.log("-----------------------------------------");
+    console.log("           Z-REPORT (DAILY SUMMARY)      ");
+    console.log(`Tenant: ${tenantId}`);
+    console.log(`Date: ${new Date().toLocaleDateString()}`);
+    console.log("-----------------------------------------");
+    console.log(`Total Cash Sales:     €${totalCash.toFixed(2)}`);
+    console.log(`Total Card Sales:     €${totalCard.toFixed(2)}`);
+    console.log(`Total Bankomat Sales: €${totalBankomat.toFixed(2)}`);
+    console.log("=========================================");
+    console.log(`Closing Balance:      €${closingBalance.toFixed(2)}`);
+    console.log("-----------------------------------------");
+    
+    res.status(200).json({ status: 'received', message: 'Summary received and sent to local printer.' });
+
+  } catch (error) {
+    logger.error('Failed to process summary for printing', { error: error.message, stack: error.stack, tenantId });
+    res.status(500).json({ error: 'Failed to communicate with local printer.' });
+  }
+});
+
+
 // --- Server Start ---
 app.listen(port, () => {
   logger.info(`Droop Payment Bridge listening on port ${port}`);
