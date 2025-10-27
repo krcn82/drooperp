@@ -59,6 +59,11 @@ type Notification = {
   read: boolean;
 }
 
+const sanitizeTenantId = (name: string) => {
+  if (!name) return '';
+  return name.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+};
+
 export default function DashboardLayout({children}: {children: React.ReactNode}) {
   const pathname = usePathname();
   const auth = useAuth();
@@ -72,10 +77,10 @@ export default function DashboardLayout({children}: {children: React.ReactNode})
   useEffect(() => {
       const storedTenantId = localStorage.getItem('tenantId');
       if (storedTenantId) {
-          const trimmedId = storedTenantId.trim();
-          setTenantId(trimmedId);
+          const sanitizedId = sanitizeTenantId(storedTenantId);
+          setTenantId(sanitizedId);
           // Also update localStorage to be clean for next time
-          localStorage.setItem('tenantId', trimmedId);
+          localStorage.setItem('tenantId', sanitizedId);
       } else if (user && !isUserLoading) {
           router.push('/login'); // Or a tenant selection page
       }
