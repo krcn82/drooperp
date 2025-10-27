@@ -1,266 +1,290 @@
-/**
- * @fileoverview Firestore Security Rules for the application.
- *
- * Core Philosophy:
- * This ruleset enforces a multi-tenant data model with user-based access control.
- * Tenants are isolated from each other, and users primarily have access to data within their own tenant.
- * Global data (e.g., subscription plans) is publicly readable but not writable by end-users.
- *
- * Data Structure:
- * - /users/{userId}: Maps user UIDs to tenant IDs. This is CRUCIAL for all authorization checks.
- * - /tenants/{tenantId}: Stores tenant-specific information.
- * - /tenants/{tenantId}/*: Subcollections contain tenant-specific data (users, products, transactions, etc.).
- * - /global/plans/{planId}: Stores publicly readable subscription plans.
- * - /mail/{mailId}: Stores email requests to be processed by an extension.
- *
- * Key Security Decisions:
- * - Users can only read/write data within their assigned tenant.
- * - The /users/{userId} document is writable only by the user themselves (self-creation).
- * - Listing of users within a tenant is allowed for tenant members.
- * - Global subscription plans are publicly readable.
- * - Email requests can only be created by a service account.
- *
- * Denormalization for Authorization:
- * - Tenant ID is denormalized onto most tenant-specific documents to simplify security rules.
- */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Maps user UIDs to tenant IDs.  Allows a user to create their own UserTenant document.
+     * @description Maps user UIDs to tenant IDs for security.
      * @path /users/{userId}
-     * @allow (create) - User with UID 'user123' can create a document /users/user123.
-     * @deny (create) - User with UID 'user123' cannot create a document /users/anotherUser.
-     * @allow (get, list, update, delete) - User with UID 'user123' cannot get, list, update or delete /users/user123 document.
-     * @principle Enforces document ownership, enabling users to create their own entry, and only their own.
+     * @allow (create) - If the authenticated user's ID matches the document ID.
+     * @allow (get, list) - If the authenticated user's ID matches the document ID.
+     * @allow (update, delete) - If the authenticated user's ID matches the document ID.
+     * @deny (create) - If the authenticated user's ID does not match the document ID.
+     * @deny (get, list) - If the authenticated user's ID does not match the document ID.
+     * @deny (update, delete) - If the authenticated user's ID does not match the document ID.
+     * @principle Enforces document ownership for all operations.
      */
     match /users/{userId} {
-      allow create: if isSignedIn() && request.auth.uid == userId;
-      allow get, list, update, delete: if false;
+      allow get, list: if isOwner(userId);
+      allow create: if isOwner(userId);
+      allow update, delete: if isOwner(userId);
     }
 
     /**
-     * @description Stores tenant-specific information. No public read/write access.
+     * @description Stores tenant information.
      * @path /tenants/{tenantId}
-     * @allow (get, list, create, update, delete) - Never allowed.
-     * @deny (get, list, create, update, delete) - All requests are denied.
-     * @principle Restricts access to tenant documents.
+     * @allow (get, list) - If any authenticated user.
+     * @allow (create) - If any authenticated user.
+     * @allow (update, delete) - If any authenticated user.
+     * @deny (create) - If not authenticated.
+     * @deny (update, delete) - If not authenticated.
+     * @principle Authenticated users can manage tenant data.
      */
     match /tenants/{tenantId} {
-      allow get, list, create, update, delete: if false;
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
+      allow delete: if isSignedIn();
     }
 
     /**
-     * @description Sub-collection for users within a tenant. Allows tenant members to list users.
+     * @description Sub-collection for users within a tenant.
      * @path /tenants/{tenantId}/users/{userId}
-     * @allow (get, list, create, update, delete) - Only allowed if the request is made by the tenant.
-     * @deny (get, list, create, update, delete) - All requests not from the tenant.
-     * @principle Enforces tenant-based access control for user management.
+     * @allow (get, list) - If the user is in the tenant.
+     * @allow (create) - If the user is in the tenant.
+     * @allow (update, delete) - If the user is in the tenant.
+     * @deny (create) - If the user is not in the tenant.
+     * @deny (update, delete) - If the user is not in the tenant.
+     * @principle Only users within the tenant can manage user data.
      */
     match /tenants/{tenantId}/users/{userId} {
-      allow get: if isTenantMember(tenantId);
-      allow list: if isTenantMember(tenantId);
-      allow create: if isTenantMember(tenantId);
-      allow update: if isTenantMember(tenantId) && resource != null;
-      allow delete: if isTenantMember(tenantId) && resource != null;
+      allow get, list: if isInTenant(tenantId);
+      allow create: if isInTenant(tenantId) && isOwner(userId);
+      allow update, delete: if isInTenant(tenantId) && isOwner(userId);
     }
 
     /**
-     * @description Sub-collection for products within a tenant.  Tenant members can manage products.
-     * @path /tenants/{tenantId}/products/{productId}
-     * @allow (get, list, create, update, delete) - Only allowed if the request is made by the tenant.
-     * @deny (get, list, create, update, delete) - All requests not from the tenant.
-     * @principle Enforces tenant-based access control for product management.
-     */
-    match /tenants/{tenantId}/products/{productId} {
-      allow get: if isTenantMember(tenantId);
-      allow list: if isTenantMember(tenantId);
-      allow create: if isTenantMember(tenantId);
-      allow update: if isTenantMember(tenantId) && resource != null;
-      allow delete: if isTenantMember(tenantId) && resource != null;
-    }
-
-    /**
-     * @description Sub-collection for transactions within a tenant. Tenant members can manage transactions.
+     * @description Sub-collection for transactions within a tenant.
      * @path /tenants/{tenantId}/transactions/{transactionId}
-     * @allow (get, list, create, update, delete) - Only allowed if the request is made by the tenant.
-     * @deny (get, list, create, update, delete) - All requests not from the tenant.
-     * @principle Enforces tenant-based access control for transaction management.
+     * @allow (get, list) - If the user is in the tenant.
+     * @allow (create) - If the user is in the tenant.
+     * @allow (update, delete) - If the user is in the tenant.
+     * @deny (create) - If the user is not in the tenant.
+     * @deny (update, delete) - If the user is not in the tenant.
+     * @principle Only users within the tenant can manage transaction data.
      */
     match /tenants/{tenantId}/transactions/{transactionId} {
-      allow get: if isTenantMember(tenantId);
-      allow list: if isTenantMember(tenantId);
-      allow create: if isTenantMember(tenantId);
-      allow update: if isTenantMember(tenantId) && resource != null;
-      allow delete: if isTenantMember(tenantId) && resource != null;
+      allow get, list: if isInTenant(tenantId);
+      allow create: if isInTenant(tenantId);
+      allow update: if isInTenant(tenantId);
+      allow delete: if isInTenant(tenantId);
     }
 
     /**
-     * @description Document for general settings within a tenant. Tenant members can manage settings.
+     * @description Sub-collection for products within a tenant.
+     * @path /tenants/{tenantId}/products/{productId}
+     * @allow (get, list) - If the user is in the tenant.
+     * @allow (create) - If the user is in the tenant.
+     * @allow (update, delete) - If the user is in the tenant.
+     * @deny (create) - If the user is not in the tenant.
+     * @deny (update, delete) - If the user is not in the tenant.
+     * @principle Only users within the tenant can manage product data.
+     */
+    match /tenants/{tenantId}/products/{productId} {
+      allow get, list: if isInTenant(tenantId);
+      allow create: if isInTenant(tenantId);
+      allow update: if isInTenant(tenantId);
+      allow delete: if isInTenant(tenantId);
+    }
+
+    /**
+     * @description Document for general settings within a tenant.
      * @path /tenants/{tenantId}/settings/general
-     * @allow (get, list, create, update, delete) - Only allowed if the request is made by the tenant.
-     * @deny (get, list, create, update, delete) - All requests not from the tenant.
-     * @principle Enforces tenant-based access control for general settings.
+     * @allow (get, list) - If the user is in the tenant.
+     * @allow (create) - If the user is in the tenant.
+     * @allow (update, delete) - If the user is in the tenant.
+     * @deny (create) - If the user is not in the tenant.
+     * @deny (update, delete) - If the user is not in the tenant.
+     * @principle Only users within the tenant can manage general settings.
      */
     match /tenants/{tenantId}/settings/general {
-      allow get: if isTenantMember(tenantId);
-      allow list: if isTenantMember(tenantId);
-      allow create: if isTenantMember(tenantId);
-      allow update: if isTenantMember(tenantId) && resource != null;
-      allow delete: if isTenantMember(tenantId) && resource != null;
+      allow get, list: if isInTenant(tenantId);
+      allow create: if isInTenant(tenantId);
+      allow update: if isInTenant(tenantId);
+      allow delete: if isInTenant(tenantId);
     }
 
     /**
-     * @description Document for module settings within a tenant. Tenant members can manage module settings.
+     * @description Document for module settings within a tenant.
      * @path /tenants/{tenantId}/settings/modules
-     * @allow (get, list, create, update, delete) - Only allowed if the request is made by the tenant.
-     * @deny (get, list, create, update, delete) - All requests not from the tenant.
-     * @principle Enforces tenant-based access control for module settings.
+     * @allow (get, list) - If the user is in the tenant.
+     * @allow (create) - If the user is in the tenant.
+     * @allow (update, delete) - If the user is in the tenant.
+     * @deny (create) - If the user is not in the tenant.
+     * @deny (update, delete) - If the user is not in the tenant.
+     * @principle Only users within the tenant can manage module settings.
      */
     match /tenants/{tenantId}/settings/modules {
-      allow get: if isTenantMember(tenantId);
-      allow list: if isTenantMember(tenantId);
-      allow create: if isTenantMember(tenantId);
-      allow update: if isTenantMember(tenantId) && resource != null;
-      allow delete: if isTenantMember(tenantId) && resource != null;
+      allow get, list: if isInTenant(tenantId);
+      allow create: if isInTenant(tenantId);
+      allow update: if isInTenant(tenantId);
+      allow delete: if isInTenant(tenantId);
     }
 
     /**
-     * @description Document for automation rule settings within a tenant.  Tenant members can manage these settings.
+     * @description Document for automation rule settings within a tenant.
      * @path /tenants/{tenantId}/settings/automationRules
-     * @allow (get, list, create, update, delete) - Only allowed if the request is made by the tenant.
-     * @deny (get, list, create, update, delete) - All requests not from the tenant.
-     * @principle Enforces tenant-based access control for automation settings.
+     * @allow (get, list) - If the user is in the tenant.
+     * @allow (create) - If the user is in the tenant.
+     * @allow (update, delete) - If the user is in the tenant.
+     * @deny (create) - If the user is not in the tenant.
+     * @deny (update, delete) - If the user is not in the tenant.
+     * @principle Only users within the tenant can manage automation rule settings.
      */
     match /tenants/{tenantId}/settings/automationRules {
-      allow get: if isTenantMember(tenantId);
-      allow list: if isTenantMember(tenantId);
-      allow create: if isTenantMember(tenantId);
-      allow update: if isTenantMember(tenantId) && resource != null;
-      allow delete: if isTenantMember(tenantId) && resource != null;
+        allow get, list: if isInTenant(tenantId);
+        allow create: if isInTenant(tenantId);
+        allow update: if isInTenant(tenantId);
+        allow delete: if isInTenant(tenantId);
     }
 
     /**
-     * @description Document for RKSV key and status within a tenant. Tenant members can manage these settings.
+     * @description Document for RKSV key and status within a tenant.
      * @path /tenants/{tenantId}/settings/rksv
-     * @allow (get, list, create, update, delete) - Only allowed if the request is made by the tenant.
-     * @deny (get, list, create, update, delete) - All requests not from the tenant.
-     * @principle Enforces tenant-based access control for RKSV settings.
+     * @allow (get, list) - If the user is in the tenant.
+     * @allow (create) - If the user is in the tenant.
+     * @allow (update, delete) - If the user is in the tenant.
+     * @deny (create) - If the user is not in the tenant.
+     * @deny (update, delete) - If the user is not in the tenant.
+     * @principle Only users within the tenant can manage RKSV settings.
      */
     match /tenants/{tenantId}/settings/rksv {
-      allow get: if isTenantMember(tenantId);
-      allow list: if isTenantMember(tenantId);
-      allow create: if isTenantMember(tenantId);
-      allow update: if isTenantMember(tenantId) && resource != null;
-      allow delete: if isTenantMember(tenantId) && resource != null;
+      allow get, list: if isInTenant(tenantId);
+      allow create: if isInTenant(tenantId);
+      allow update: if isInTenant(tenantId);
+      allow delete: if isInTenant(tenantId);
     }
 
     /**
-     * @description Stores credentials and status for third-party integrations like Wolt or Foodora. Tenant members can manage integrations.
+     * @description Stores credentials and status for third-party integrations.
      * @path /tenants/{tenantId}/integrations/{platformId}
-     * @allow (get, list, create, update, delete) - Only allowed if the request is made by the tenant.
-     * @deny (get, list, create, update, delete) - All requests not from the tenant.
-     * @principle Enforces tenant-based access control for integrations.
+     * @allow (get, list) - If the user is in the tenant.
+     * @allow (create) - If the user is in the tenant.
+     * @allow (update, delete) - If the user is in the tenant.
+     * @deny (create) - If the user is not in the tenant.
+     * @deny (update, delete) - If the user is not in the tenant.
+     * @principle Only users within the tenant can manage integration settings.
      */
     match /tenants/{tenantId}/integrations/{platformId} {
-      allow get: if isTenantMember(tenantId);
-      allow list: if isTenantMember(tenantId);
-      allow create: if isTenantMember(tenantId);
-      allow update: if isTenantMember(tenantId) && resource != null;
-      allow delete: if isTenantMember(tenantId) && resource != null;
+      allow get, list: if isInTenant(tenantId);
+      allow create: if isInTenant(tenantId);
+      allow update: if isInTenant(tenantId);
+      allow delete: if isInTenant(tenantId);
     }
 
     /**
-     * @description Global collection for subscription plans. Publicly readable.
+     * @description Global collection for subscription plans.
      * @path /global/plans/{planId}
-     * @allow (get, list) - All users can read subscription plans.
-     * @deny (create, update, delete) - No one should be able to modify plans through the client.
-     * @principle Provides public read access to global plans while restricting write access.
+     * @allow (get, list) - If any authenticated user.
+     * @allow (create) - If any authenticated user.
+     * @allow (update, delete) - If any authenticated user.
+     * @deny (create) - If not authenticated.
+     * @deny (update, delete) - If not authenticated.
+     * @principle Authenticated users can manage subscription plans.
      */
     match /global/plans/{planId} {
-      allow get, list: if true;
-      allow create, update, delete: if false;
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn();  // Allow creating plans (consider restricting this in production)
+      allow update: if isSignedIn();  // Allow updating plans (consider restricting this in production)
+      allow delete: if isSignedIn();  // Allow deleting plans (consider restricting this in production)
     }
 
     /**
-     * @description Sub-collection for messages within an AI chat session. Tenant members can manage messages.
+     * @description Sub-collection for messages within an AI chat session.
      * @path /tenants/{tenantId}/aiChats/{chatId}/messages/{messageId}
-     * @allow (get, list, create, update, delete) - Only allowed if the request is made by the tenant.
-     * @deny (get, list, create, update, delete) - All requests not from the tenant.
-     * @principle Enforces tenant-based access control for AI chat messages.
+     * @allow (get, list) - If the user is in the tenant.
+     * @allow (create) - If the user is in the tenant.
+     * @allow (update, delete) - If the user is in the tenant.
+     * @deny (create) - If the user is not in the tenant.
+     * @deny (update, delete) - If the user is not in the tenant.
+     * @principle Only users within the tenant can manage AI chat messages.
      */
     match /tenants/{tenantId}/aiChats/{chatId}/messages/{messageId} {
-      allow get: if isTenantMember(tenantId);
-      allow list: if isTenantMember(tenantId);
-      allow create: if isTenantMember(tenantId);
-      allow update: if isTenantMember(tenantId) && resource != null;
-      allow delete: if isTenantMember(tenantId) && resource != null;
+      allow get, list: if isInTenant(tenantId);
+      allow create: if isInTenant(tenantId);
+      allow update: if isInTenant(tenantId);
+      allow delete: if isInTenant(tenantId);
     }
 
-    /**
-     * @description Sub-collection for orders from external POS/delivery platforms. Tenant members can manage orders.
+   /**
+     * @description Sub-collection for orders from external POS/delivery platforms.
      * @path /tenants/{tenantId}/posOrders/{orderId}
-     * @allow (get, list, create, update, delete) - Only allowed if the request is made by the tenant.
-     * @deny (get, list, create, update, delete) - All requests not from the tenant.
-     * @principle Enforces tenant-based access control for POS orders.
+     * @allow (get, list) - If the user is in the tenant.
+     * @allow (create) - If the user is in the tenant.
+     * @allow (update, delete) - If the user is in the tenant.
+     * @deny (create) - If the user is not in the tenant.
+     * @deny (update, delete) - If the user is not in the tenant.
+     * @principle Only users within the tenant can manage POS order data.
      */
     match /tenants/{tenantId}/posOrders/{orderId} {
-      allow get: if isTenantMember(tenantId);
-      allow list: if isTenantMember(tenantId);
-      allow create: if isTenantMember(tenantId);
-      allow update: if isTenantMember(tenantId) && resource != null;
-      allow delete: if isTenantMember(tenantId) && resource != null;
+      allow get, list: if isInTenant(tenantId);
+      allow create: if isInTenant(tenantId);
+      allow update: if isInTenant(tenantId);
+      allow delete: if isInTenant(tenantId);
     }
 
     /**
-     * @description Sub-collection for logging incoming webhook API calls. Tenant members can manage logs.
+     * @description Sub-collection for logging incoming webhook API calls.
      * @path /tenants/{tenantId}/auditLogs/{logId}
-     * @allow (get, list, create, update, delete) - Only allowed if the request is made by the tenant.
-     * @deny (get, list, create, update, delete) - All requests not from the tenant.
-     * @principle Enforces tenant-based access control for audit logs.
+     * @allow (get, list) - If the user is in the tenant.
+     * @allow (create) - If the user is in the tenant.
+     * @allow (update, delete) - If the user is in the tenant.
+     * @deny (create) - If the user is not in the tenant.
+     * @deny (update, delete) - If the user is not in the tenant.
+     * @principle Only users within the tenant can manage audit log data.
      */
     match /tenants/{tenantId}/auditLogs/{logId} {
-      allow get: if isTenantMember(tenantId);
-      allow list: if isTenantMember(tenantId);
-      allow create: if isTenantMember(tenantId);
-      allow update: if isTenantMember(tenantId) && resource != null;
-      allow delete: if isTenantMember(tenantId) && resource != null;
+        allow get, list: if isInTenant(tenantId);
+        allow create: if isInTenant(tenantId);
+        allow update: if isInTenant(tenantId);
+        allow delete: if isInTenant(tenantId);
     }
 
     /**
-     * @description Sub-collection for user and system notifications within a tenant. Tenant members can manage notifications.
+     * @description Sub-collection for user and system notifications within a tenant.
      * @path /tenants/{tenantId}/notifications/{notificationId}
-     * @allow (get, list, create, update, delete) - Only allowed if the request is made by the tenant.
-     * @deny (get, list, create, update, delete) - All requests not from the tenant.
-     * @principle Enforces tenant-based access control for notifications.
+     * @allow (get, list) - If the user is in the tenant.
+     * @allow (create) - If the user is in the tenant.
+     * @allow (update, delete) - If the user is in the tenant.
+     * @deny (create) - If the user is not in the tenant.
+     * @deny (update, delete) - If the user is not in the tenant.
+     * @principle Only users within the tenant can manage notifications.
      */
     match /tenants/{tenantId}/notifications/{notificationId} {
-      allow get: if isTenantMember(tenantId);
-      allow list: if isTenantMember(tenantId);
-      allow create: if isTenantMember(tenantId);
-      allow update: if isTenantMember(tenantId) && resource != null;
-      allow delete: if isTenantMember(tenantId) && resource != null;
+      allow get, list: if isInTenant(tenantId);
+      allow create: if isInTenant(tenantId);
+      allow update: if isInTenant(tenantId);
+      allow delete: if isInTenant(tenantId);
     }
 
     /**
-     * @description Collection for triggering email sending via Firebase Extensions (e.g., SendGrid, Mailgun).  Only the service account should be able to write.
+     * @description Collection for triggering email sending via Firebase Extensions.
      * @path /mail/{mailId}
-     * @allow (create) - Only allowed for service accounts.
-     * @deny (get, list, update, delete) - Not allowed for anyone.
-     * @principle Restricts access to email creation to service accounts only.
+     * @allow create: if false;
+     * @allow get: if false;
+     * @allow list: if false;
+     * @allow update: if false;
+     * @allow delete: if false;
+     * @principle This collection is only writable by extensions.  All client access is denied.
      */
     match /mail/{mailId} {
-      allow create: if false; // TODO: Only allow service accounts here
-      allow get, list, update, delete: if false;
+      allow create: if false;
+      allow get: if false;
+      allow list: if false;
+      allow update: if false;
+      allow delete: if false;
     }
+  }
 
-    function isSignedIn() {
-      return request.auth != null;
-    }
+  // Helper functions
+  function isSignedIn() {
+    return request.auth != null;
+  }
 
-    function isTenantMember(tenantId) {
-      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
-    }
+  function isOwner(userId) {
+    return request.auth.uid == userId;
+  }
+
+  function isInTenant(tenantId) {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
   }
 }
