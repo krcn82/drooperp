@@ -122,7 +122,7 @@
         },
         "status": {
           "type": "string",
-          "description": "Status of the transaction (e.g., 'pending', 'completed')."
+          "description": "Status of the transaction (e.g., 'pending', 'completed', 'paid')."
         }
       },
       "required": [
@@ -543,6 +543,46 @@
         }
       },
       "required": ["to", "message"]
+    },
+    "Payment": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Payment",
+      "type": "object",
+      "description": "Represents a payment for a transaction.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the payment."
+        },
+        "tenantId": {
+          "type": "string",
+          "description": "Reference to the Tenant."
+        },
+        "transactionId": {
+          "type": "string",
+          "description": "Reference to the Transaction."
+        },
+        "method": {
+          "type": "string",
+          "enum": ["cash", "card", "stripe", "bankomat"],
+          "description": "Payment method used."
+        },
+        "amount": {
+          "type": "number",
+          "description": "Amount paid."
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of the payment."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["completed", "failed", "pending"],
+          "description": "Status of the payment."
+        }
+      },
+      "required": ["id", "tenantId", "transactionId", "method", "amount", "timestamp", "status"]
     }
   },
   "auth": {
@@ -574,6 +614,12 @@
         "$ref": "#/entities/Transaction"
       },
       "description": "Sub-collection for transactions within a tenant."
+    },
+    "/tenants/{tenantId}/payments/{paymentId}": {
+      "schema": {
+        "$ref": "#/entities/Payment"
+      },
+      "description": "Sub-collection for payments within a tenant."
     },
     "/tenants/{tenantId}/products/{productId}": {
       "schema": {

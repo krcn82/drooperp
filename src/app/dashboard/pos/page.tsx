@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CreditCard, ShoppingCart, QrCode, X, Plus, Minus, Barcode, WifiOff, Camera, Search, Bot, Bell } from 'lucide-react';
+import { ShoppingCart, X, Plus, Minus, Barcode, WifiOff, Camera, Search, Bot, Bell } from 'lucide-react';
 import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, where } from 'firebase/firestore';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
@@ -17,6 +17,7 @@ import QRCode from 'qrcode.react';
 import { recordTransaction, confirmIntegrationOrder } from './actions';
 import { useAiState } from '@/hooks/use-ai-state';
 import { Badge } from '@/components/ui/badge';
+import PaymentDialog from '@/components/pos/PaymentDialog';
 
 type Product = {
   id: string;
@@ -56,6 +57,7 @@ export default function PosPage() {
   const [tenantId, setTenantId] = useState<string|null>(null);
   const [isClient, setIsClient] = useState(false);
   const [isPaymentOpen, setPaymentOpen] = useState(false);
+  const [currentTransactionId, setCurrentTransactionId] = useState<string | null>(null);
   const [isConfirmationOpen, setConfirmationOpen] = useState(false);
   const [lastTransactionInfo, setLastTransactionInfo] = useState({ id: '', qrCode: ''});
   const [isOffline, setIsOffline] = useState(false);
@@ -119,7 +121,7 @@ export default function PosPage() {
 
   const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
-  const handlePayment = async (paymentMethod: 'cash' | 'card') => {
+  const handleInitiatePayment = async () => {
     if (!user || !tenantId) {
       toast({ variant: 'destructive', title: 'Error', description: 'Cannot process payment. User or Tenant not identified.' });
       return;
@@ -129,20 +131,25 @@ export default function PosPage() {
       items: cart.map(i => ({ name: i.name, qty: i.quantity, price: i.price, productId: i.productId })),
       cashierUserId: user.uid,
       amountTotal: total,
-      paymentMethod,
       type: 'shop' as 'shop' | 'restaurant',
     };
 
     const result = await recordTransaction(tenantId, transactionData);
 
     if (result.success && result.transactionId) {
-      setLastTransactionInfo({ id: result.transactionId, qrCode: result.qrCode || '' });
-      setPaymentOpen(false);
-      setConfirmationOpen(true);
-      setCart([]);
+      setCurrentTransactionId(result.transactionId);
+      setPaymentOpen(true);
     } else {
       toast({ variant: 'destructive', title: 'Transaction Failed', description: result.message });
     }
+  };
+
+  const onPaymentSuccess = (qrCode: string) => {
+    setLastTransactionInfo({ id: currentTransactionId!, qrCode: qrCode });
+    setPaymentOpen(false);
+    setConfirmationOpen(true);
+    setCart([]);
+    setCurrentTransactionId(null);
   };
   
   const handleConfirmOrder = async (order: PosOrder) => {
@@ -160,7 +167,6 @@ export default function PosPage() {
     
     if (result.success && result.transactionId) {
       toast({ title: 'Order Confirmed', description: `Order from ${order.source} has been processed.` });
-      // The Firestore listener will automatically remove the order from the list
     } else {
       toast({ variant: 'destructive', title: 'Confirmation Failed', description: result.message });
     }
@@ -344,9 +350,8 @@ export default function PosPage() {
                   </CardContent>
                   <CardFooter className="flex justify-between items-center mt-auto bg-muted/50 p-4 rounded-b-lg">
                     <div className="font-bold text-xl">Total: ${total.toFixed(2)}</div>
-                    <Button size="lg" className="bg-accent hover:bg-accent/90" onClick={() => setPaymentOpen(true)} disabled={cart.length === 0}>
-                      <CreditCard className="mr-2 h-4 w-4" />
-                      Pay
+                    <Button size="lg" className="bg-accent hover:bg-accent/90" onClick={handleInitiatePayment} disabled={cart.length === 0}>
+                      Complete Order
                     </Button>
                   </CardFooter>
                 </Card>
@@ -460,21 +465,16 @@ export default function PosPage() {
       )}
 
       {/* Payment Modal */}
-      <Dialog open={isPaymentOpen} onOpenChange={setPaymentOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Complete Payment</DialogTitle>
-            <DialogDescription>Total Amount: ${total.toFixed(2)}</DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-2 gap-4 my-4">
-            <Button variant="outline" className="py-8 text-lg" onClick={() => handlePayment('cash')}>Cash</Button>
-            <Button variant="outline" className="py-8 text-lg" onClick={() => handlePayment('card')}>Card</Button>
-          </div>
-          <DialogFooter>
-             <Button variant="ghost" onClick={() => setPaymentOpen(false)}>Cancel</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {tenantId && currentTransactionId && (
+        <PaymentDialog
+          open={isPaymentOpen}
+          onOpenChange={setPaymentOpen}
+          total={total}
+          tenantId={tenantId}
+          transactionId={currentTransactionId}
+          onPaymentSuccess={onPaymentSuccess}
+        />
+      )}
       
       {/* Confirmation Modal */}
       <Dialog open={isConfirmationOpen} onOpenChange={setConfirmationOpen}>
@@ -498,5 +498,3 @@ export default function PosPage() {
     </div>
   );
 }
-
-    
