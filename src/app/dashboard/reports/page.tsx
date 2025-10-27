@@ -10,6 +10,7 @@ import {LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsiv
 import {format} from 'date-fns';
 import { useMemoFirebase } from '@/firebase/provider';
 import Link from 'next/link';
+import { Button } from '@/components/ui/button';
 
 type TransactionItem = {
   name: string;
