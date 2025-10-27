@@ -105,12 +105,20 @@
           "description": "Reference to Product. (Relationship: Product 1:N Transaction)"
         },
         "signature": {
-            "type": "string",
-            "description": "RKSV signature for the transaction."
+          "type": "string",
+          "description": "RKSV signature for the transaction."
         },
         "qrCode": {
-            "type": "string",
-            "description": "RKSV QR code data for the transaction."
+          "type": "string",
+          "description": "RKSV QR code data for the transaction."
+        },
+        "source": {
+          "type": "string",
+          "description": "Source of the transaction (e.g., 'pos-shop', 'wolt', 'foodora')."
+        },
+        "status": {
+          "type": "string",
+          "description": "Status of the transaction (e.g., 'pending', 'completed')."
         }
       },
       "required": [
@@ -327,11 +335,15 @@
           "description": "Flag indicating if RKSV signing is active for the tenant."
         },
         "lastSignature": {
-            "type": "string",
-            "description": "The signature of the most recent transaction, used for chaining."
+          "type": "string",
+          "description": "The signature of the most recent transaction, used for chaining."
         }
       },
-      "required": ["publicKey", "rksvActive", "lastSignature"]
+      "required": [
+        "publicKey",
+        "rksvActive",
+        "lastSignature"
+      ]
     },
     "Integration": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -355,11 +367,67 @@
         },
         "status": {
           "type": "string",
-          "enum": ["active", "disconnected", "error"],
+          "enum": [
+            "active",
+            "disconnected",
+            "error"
+          ],
           "description": "The current status of the integration."
         }
       },
-      "required": ["apiKey", "connectedAt", "status"]
+      "required": [
+        "apiKey",
+        "connectedAt",
+        "status"
+      ]
+    },
+    "POSOrder": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "POS Order",
+      "type": "object",
+      "description": "Represents an order originating from an external Point-of-Sale or delivery platform.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the order, usually from the external platform."
+        },
+        "tenantId": {
+          "type": "string",
+          "description": "The tenant this order belongs to."
+        },
+        "customer": {
+          "type": "object",
+          "description": "Customer information."
+        },
+        "items": {
+          "type": "array",
+          "description": "The items included in the order."
+        },
+        "totalAmount": {
+          "type": "number",
+          "description": "The total amount of the order."
+        },
+        "paymentType": {
+          "type": "string",
+          "description": "How the order was paid (e.g., 'card', 'cash_on_delivery')."
+        },
+        "source": {
+          "type": "string",
+          "description": "The platform the order originated from (e.g., 'wolt', 'foodora')."
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The timestamp of when the order was placed."
+        }
+      },
+      "required": [
+        "id",
+        "tenantId",
+        "totalAmount",
+        "source",
+        "timestamp"
+      ]
     }
   },
   "auth": {
@@ -433,8 +501,12 @@
         "$ref": "#/entities/ChatMessage"
       },
       "description": "Sub-collection for messages within an AI chat session."
+    },
+    "/tenants/{tenantId}/posOrders/{orderId}": {
+      "schema": {
+        "$ref": "#/entities/POSOrder"
+      },
+      "description": "Sub-collection for orders from external POS/delivery platforms."
     }
   }
 }
-
-    
