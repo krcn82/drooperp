@@ -2,21 +2,27 @@ import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import * as crypto from 'crypto';
 
+const sanitizeTenantId = (name: string) => {
+  return name.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+};
+
 /**
  * Creates user and tenant records in Firestore.
  * This function should be triggered after a new user signs up.
  */
 export const registerTenant = functions.https.onCall(async (data, context) => {
-  const { tenantId, tenantName, ownerEmail } = data;
+  const { tenantName, ownerEmail } = data;
   const uid = context.auth?.uid;
 
   if (!uid) {
     throw new functions.https.HttpsError('unauthenticated', 'The function must be called while authenticated.');
   }
 
-  if (!tenantId || !tenantName || !ownerEmail) {
-    throw new functions.https.HttpsError('invalid-argument', 'Missing required data: tenantId, tenantName, or ownerEmail.');
+  if (!tenantName || !ownerEmail) {
+    throw new functions.https.HttpsError('invalid-argument', 'Missing required data: tenantName, or ownerEmail.');
   }
+  
+  const tenantId = sanitizeTenantId(tenantName);
   
   const firestore = admin.firestore();
   const batch = firestore.batch();

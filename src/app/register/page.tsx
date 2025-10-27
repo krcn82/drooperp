@@ -33,6 +33,10 @@ const initialState = {
   error: false,
 };
 
+const sanitizeTenantId = (name: string) => {
+  return name.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+};
+
 export default function RegisterPage() {
   const router = useRouter();
   const {toast} = useToast();
@@ -47,6 +51,13 @@ export default function RegisterPage() {
       confirmPassword: '',
     },
   });
+  
+  const handleRegister = (formData: FormData) => {
+    const tenantName = formData.get('tenantName') as string;
+    const sanitizedId = sanitizeTenantId(tenantName);
+    localStorage.setItem('tenantId', sanitizedId);
+    formAction(formData);
+  }
 
   useEffect(() => {
     if (state.message) {
@@ -77,7 +88,7 @@ export default function RegisterPage() {
           <CardDescription>Create your account and tenant</CardDescription>
         </CardHeader>
         <Form {...form}>
-          <form action={formAction}>
+          <form action={handleRegister}>
             <CardContent className="grid gap-4">
               <FormField
                 control={form.control}

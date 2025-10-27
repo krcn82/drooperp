@@ -26,6 +26,10 @@ const formSchema = z.object({
 
 type LoginFormValues = z.infer<typeof formSchema>;
 
+const sanitizeTenantId = (name: string) => {
+  return name.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+};
+
 export default function LoginPage() {
   const auth = useAuth();
   const firestore = useFirestore();
@@ -65,9 +69,9 @@ export default function LoginPage() {
   }, [auth, firestore, router]);
 
   const onSubmit = async (values: LoginFormValues) => {
-    const trimmedTenantId = values.tenantId.trim();
-    // Store tenantId in localStorage to make it available across the app
-    localStorage.setItem('tenantId', trimmedTenantId);
+    const sanitizedId = sanitizeTenantId(values.tenantId);
+    // Store sanitized tenantId in localStorage to make it available across the app
+    localStorage.setItem('tenantId', sanitizedId);
 
     try {
       await initiateEmailSignIn(auth, values.email, values.password);
