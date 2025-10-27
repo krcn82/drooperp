@@ -3,6 +3,16 @@ import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { Timestamp } from 'firebase-admin/firestore';
 
+// Default automation rules if a tenant has not configured them
+const defaultRules = {
+  highOrderVolumeThreshold: 20,
+  lowStockThreshold: 5,
+  integrationTimeoutMinutes: 30,
+  dailySummaryEnabled: true,
+};
+
+type AutomationRules = typeof defaultRules;
+
 // Helper function to add a notification
 const addNotification = (
   firestore: admin.firestore.Firestore,
@@ -53,6 +63,22 @@ export const automationWorker = functions.pubsub.schedule('every 15 minutes')
 });
 
 /**
+ * Fetches automation rules for a tenant, using defaults if not set.
+ * @param firestore Firestore admin instance.
+ * @param tenantId The ID of the tenant.
+ * @returns The automation rules for the tenant.
+ */
+async function getAutomationRules(firestore: admin.firestore.Firestore, tenantId: string): Promise<AutomationRules> {
+    const rulesRef = firestore.doc(`tenants/${tenantId}/settings/automationRules`);
+    const doc = await rulesRef.get();
+    if (!doc.exists) {
+        return defaultRules;
+    }
+    // Merge tenant's rules with defaults to ensure all keys are present
+    return { ...defaultRules, ...doc.data() };
+}
+
+/**
  * Runs all automated checks for a single tenant.
  * @param firestore The Firestore admin instance.
  * @param tenantId The ID of the tenant to check.
@@ -60,6 +86,8 @@ export const automationWorker = functions.pubsub.schedule('every 15 minutes')
 async function runChecksForTenant(firestore: admin.firestore.Firestore, tenantId: string) {
   console.log(`Running checks for tenant: ${tenantId}`);
   
+  const rules = await getAutomationRules(firestore, tenantId);
+
   // Use a Set to prevent duplicate notifications in the same run
   const generatedNotificationMessages = new Set<string>();
 
@@ -75,7 +103,7 @@ async function runChecksForTenant(firestore: admin.firestore.Firestore, tenantId
     const isMidnight = now.getHours() === 0 && now.getMinutes() < 15;
 
     // Daily Summary Notification (runs once around midnight)
-    if (isMidnight) {
+    if (isMidnight && rules.dailySummaryEnabled) {
         await createUniqueNotification(
             'Daily Summary Ready',
             'Your daily business summary is now available in the Reports tab.',
@@ -83,23 +111,23 @@ async function runChecksForTenant(firestore: admin.firestore.Firestore, tenantId
         );
     }
     
-    await checkHighOrderVolume(firestore, tenantId, createUniqueNotification);
-    await checkIntegrationErrors(firestore, tenantId, createUniqueNotification);
-    await checkBestSellerSpike(firestore, tenantId, createUniqueNotification);
-    await checkLowStock(firestore, tenantId, createUniqueNotification);
+    await checkHighOrderVolume(firestore, tenantId, rules, createUniqueNotification);
+    await checkIntegrationErrors(firestore, tenantId, rules, createUniqueNotification);
+    await checkBestSellerSpike(firestore, tenantId, rules, createUniqueNotification);
+    await checkLowStock(firestore, tenantId, rules, createUniqueNotification);
     
   } catch (error) {
     console.error(`Failed to run checks for tenant ${tenantId}:`, error);
   }
 }
 
-async function checkHighOrderVolume(firestore: admin.firestore.Firestore, tenantId: string, createNotification: Function) {
+async function checkHighOrderVolume(firestore: admin.firestore.Firestore, tenantId: string, rules: AutomationRules, createNotification: Function) {
     const tenMinutesAgo = Timestamp.fromMillis(Date.now() - 10 * 60 * 1000);
     const transactionsSnapshot = await firestore.collection(`tenants/${tenantId}/transactions`)
         .where('timestamp', '>=', tenMinutesAgo)
         .get();
 
-    if (transactionsSnapshot.size > 20) {
+    if (transactionsSnapshot.size > rules.highOrderVolumeThreshold) {
         await createNotification(
             'High Order Volume',
             `High order traffic detected (${transactionsSnapshot.size} orders in the last 10 mins). Prepare kitchen team!`,
@@ -108,23 +136,24 @@ async function checkHighOrderVolume(firestore: admin.firestore.Firestore, tenant
     }
 }
 
-async function checkIntegrationErrors(firestore: admin.firestore.Firestore, tenantId: string, createNotification: Function) {
-    const thirtyMinutesAgo = Timestamp.fromMillis(Date.now() - 30 * 60 * 1000);
+async function checkIntegrationErrors(firestore: admin.firestore.Firestore, tenantId: string, rules: AutomationRules, createNotification: Function) {
+    const timeoutMillis = Date.now() - rules.integrationTimeoutMinutes * 60 * 1000;
+    const timeoutTimestamp = Timestamp.fromMillis(timeoutMillis);
     const integrationsSnapshot = await firestore.collection(`tenants/${tenantId}/integrations`).get();
 
     for (const doc of integrationsSnapshot.docs) {
         const integration = doc.data();
-        if (integration.lastSync && integration.lastSync < thirtyMinutesAgo) {
+        if (integration.lastSync && integration.lastSync < timeoutTimestamp) {
             await createNotification(
                 'Integration Alert',
-                `⚠️ ${doc.id} connection appears inactive. Last sync was over 30 minutes ago.`,
+                `⚠️ ${doc.id} connection appears inactive. Last sync was over ${rules.integrationTimeoutMinutes} minutes ago.`,
                 'alert'
             );
         }
     }
 }
 
-async function checkBestSellerSpike(firestore: admin.firestore.Firestore, tenantId: string, createNotification: Function) {
+async function checkBestSellerSpike(firestore: admin.firestore.Firestore, tenantId: string, rules: AutomationRules, createNotification: Function) {
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const yesterdayStart = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000);
@@ -136,7 +165,8 @@ async function checkBestSellerSpike(firestore: admin.firestore.Firestore, tenant
         const todayQty = todaySales[productId].quantity;
         const yesterdayQty = yesterdaySales[productId]?.quantity || 0;
         
-        if (yesterdayQty > 0 && todayQty / yesterdayQty >= 2) { // 200% increase
+        // Spike is defined as a 200% increase (doubling)
+        if (yesterdayQty > 0 && todayQty / yesterdayQty >= 2) { 
             await createNotification(
                 'Trending Product',
                 `Product "${todaySales[productId].name}" is trending! Sales have increased by over 200% today. Consider reordering stock.`,
@@ -169,9 +199,9 @@ async function getProductSales(firestore: admin.firestore.Firestore, tenantId: s
     return sales;
 }
 
-async function checkLowStock(firestore: admin.firestore.Firestore, tenantId: string, createNotification: Function) {
+async function checkLowStock(firestore: admin.firestore.Firestore, tenantId: string, rules: AutomationRules, createNotification: Function) {
     const productsSnapshot = await firestore.collection(`tenants/${tenantId}/products`)
-        .where('quantity', '<', 5)
+        .where('quantity', '<', rules.lowStockThreshold)
         .get();
 
     for (const doc of productsSnapshot.docs) {

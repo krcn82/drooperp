@@ -298,6 +298,30 @@
         }
       }
     },
+    "AutomationRules": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Automation Rules",
+      "type": "object",
+      "description": "Configurable rules for the automation worker.",
+      "properties": {
+        "highOrderVolumeThreshold": {
+          "type": "number",
+          "description": "Transaction count in the last 10 mins to trigger a high volume alert."
+        },
+        "lowStockThreshold": {
+          "type": "number",
+          "description": "The stock quantity below which a low stock alert is triggered."
+        },
+        "integrationTimeoutMinutes": {
+          "type": "number",
+          "description": "The number of minutes after which an inactive integration triggers an alert."
+        },
+        "dailySummaryEnabled": {
+          "type": "boolean",
+          "description": "Whether to send the daily summary notification."
+        }
+      }
+    },
     "ChatMessage": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "ChatMessage",
@@ -570,6 +594,12 @@
       },
       "description": "Document for module settings within a tenant."
     },
+    "/tenants/{tenantId}/settings/automationRules": {
+        "schema": {
+            "$ref": "#/entities/AutomationRules"
+        },
+        "description": "Document for automation rule settings within a tenant."
+    },
     "/tenants/{tenantId}/settings/rksv": {
       "schema": {
         "$ref": "#/entities/RKSVKey"
@@ -620,4 +650,5 @@
     }
   }
 }
+
     
