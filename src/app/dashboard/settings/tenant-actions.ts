@@ -84,8 +84,7 @@ export async function createNewTenant(tenantName: string): Promise<{ success: bo
   };
   setDocumentNonBlocking(automationRef, defaultAutomation, {});
   
-  // Note: The /users/{uid} mapping is only strictly needed if rules depend on it
-  // before the user is a member of any tenant. Given our flow, it's good practice.
+  // Create the user-to-tenant mapping for security rules
   const userTenantMappingRef = doc(firestore, 'users', user.uid);
   setDocumentNonBlocking(userTenantMappingRef, { tenantId: tenantId }, { merge: true });
 
@@ -136,5 +135,3 @@ export async function updateModuleSettings(tenantId: string, modules: any): Prom
     revalidatePath('/dashboard/settings');
     return { success: true, message: 'Module settings updated.' };
 }
-
-    

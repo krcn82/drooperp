@@ -30,6 +30,7 @@ export const registerTenant = functions.https.onCall(async (data, context) => {
     ownerUid: uid,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
     plan: 'free',
+    status: 'active'
   });
 
   // 2. Create User Document in Tenant Subcollection using the user's UID
@@ -37,7 +38,7 @@ export const registerTenant = functions.https.onCall(async (data, context) => {
   batch.set(userRef, {
     id: uid,
     email: ownerEmail,
-    roles: ['admin'],
+    role: 'admin',
     tenantId: tenantId,
   });
 
