@@ -16,6 +16,7 @@ export const startDevicePayment = functions.https.onCall(async (data, context) =
   }
 
   const firestore = admin.firestore();
+  const idToken = context.auth.token;
 
   try {
     // 1. Get the payment bridge URL from tenant settings
@@ -32,10 +33,13 @@ export const startDevicePayment = functions.https.onCall(async (data, context) =
     const projectId = process.env.GCLOUD_PROJECT;
     const callbackUrl = `https://${region}-${projectId}.cloudfunctions.net/paymentDeviceCallback`;
 
-    // 3. Send command to the local payment bridge
+    // 3. Send command to the local payment bridge, including the auth token
     const response = await fetch(`${paymentBridgeUrl}/api/payment/device/start`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${idToken}`
+      },
       body: JSON.stringify({
         tenantId,
         transactionId,
@@ -97,38 +101,62 @@ export const paymentDeviceCallback = functions.https.onRequest(async (req, res) 
     const paymentRef = firestore.doc(`tenants/${tenantId}/payments/${paymentId}`);
 
     try {
-        await paymentRef.update({
+        const paymentDoc = await paymentRef.get();
+        if (!paymentDoc.exists) {
+            throw new Error(`Payment document with ID ${paymentId} not found.`);
+        }
+        const transactionId = paymentDoc.data()?.transactionId;
+
+        const batch = firestore.batch();
+
+        // 1. Update the payment document
+        batch.update(paymentRef, {
             status: status, // 'completed' or 'failed'
             deviceResponse: deviceResponse || null,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         });
 
-        // Also update the transaction status if payment was completed
-        if (status === 'completed') {
-            const paymentDoc = await paymentRef.get();
-            const transactionId = paymentDoc.data()?.transactionId;
-            if (transactionId) {
-                const transactionRef = firestore.doc(`tenants/${tenantId}/transactions/${transactionId}`);
-                await transactionRef.update({ status: 'paid' });
-            }
+        // 2. Update the corresponding transaction if payment was successful
+        if (status === 'completed' && transactionId) {
+            const transactionRef = firestore.doc(`tenants/${tenantId}/transactions/${transactionId}`);
+            batch.update(transactionRef, { 
+                status: 'paid',
+                paymentStatus: status,
+                confirmedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
         }
         
-        await firestore.collection(`tenants/${tenantId}/auditLogs`).add({
-            type: 'devicePaymentCallback',
+        // 3. Add to audit log
+        const auditLogRef = firestore.collection(`tenants/${tenantId}/auditLogs`).doc();
+        batch.set(auditLogRef, {
+            type: 'paymentDeviceCallback',
             result: status,
             paymentId: paymentId,
             details: deviceResponse,
             timestamp: admin.firestore.FieldValue.serverTimestamp()
         });
-
-        console.log(`Payment callback processed for paymentId: ${paymentId}`);
-        res.status(200).send({ success: true });
         
-        // TODO: In a real app, you might trigger a push notification to the POS UI here.
+        // 4. Send notification
+        const notificationRef = firestore.collection(`tenants/${tenantId}/notifications`).doc();
+        batch.set(notificationRef, {
+            type: status === "completed" ? 'success' : 'alert',
+            title: status === "completed" ? "Payment Approved ✅" : "Payment Failed ❌",
+            message: status === "completed"
+                ? `Transaction for payment ${paymentId} approved by terminal ${deviceResponse?.terminalId}.`
+                : `Transaction for payment ${paymentId} was declined or an error occurred.`,
+            timestamp: admin.firestore.FieldValue.serverTimestamp(),
+            read: false,
+        });
+
+        await batch.commit();
+
+        console.log(`✅ Payment callback processed for paymentId: ${paymentId}`);
+        res.status(200).send({ success: true });
 
     } catch (error: any) {
-        console.error('Error processing payment device callback:', error);
+        console.error('❌ Error processing payment device callback:', error);
          await firestore.collection(`tenants/${tenantId}/auditLogs`).add({
-            type: 'devicePaymentCallback',
+            type: 'paymentDeviceCallback',
             result: 'error',
             paymentId: paymentId,
             error: error.message,
