@@ -15,6 +15,7 @@ import {
   Bot,
   Calendar,
   Contact,
+  Utensils,
 } from 'lucide-react';
 import {usePathname, useRouter} from 'next/navigation';
 import {Button} from '@/components/ui/button';
@@ -70,9 +71,10 @@ export default function DashboardLayout({children}: {children: React.ReactNode})
   }, [user, isUserLoading, router]);
 
   const moduleSettingsRef = useMemoFirebase(() => {
-    if (!firestore || !tenantId) return null;
+    // Prevent query from running before user is loaded and tenantId is set
+    if (!firestore || !tenantId || isUserLoading || !user) return null;
     return doc(firestore, `tenants/${tenantId}/settings/modules`);
-  }, [firestore, tenantId]);
+  }, [firestore, tenantId, isUserLoading, user]);
 
   const { data: moduleSettings, isLoading: areModulesLoading } = useDoc<ModuleSettings>(moduleSettingsRef);
   
@@ -101,6 +103,7 @@ export default function DashboardLayout({children}: {children: React.ReactNode})
   const handleLogout = async () => {
     if (auth) {
       await signOut(auth);
+      localStorage.removeItem('tenantId');
       router.push('/login');
     }
   };
@@ -118,7 +121,7 @@ export default function DashboardLayout({children}: {children: React.ReactNode})
     </Link>
   );
 
-  const isLoading = isUserLoading || !user || areModulesLoading;
+  const isLoading = isUserLoading || !user;
 
   if (isLoading) {
     return (
