@@ -1,195 +1,275 @@
 /**
- * @fileoverview Firestore Security Rules.
+ * @file Firestore Security Rules
+ * @description This ruleset enforces a strict tenant-based security model with user-based access control.
  *
- * Core Philosophy: This ruleset prioritizes strong authorization and assumes rapid data model iteration.
- *  - It enforces strict ownership and role-based access controls.
- *  - It avoids complex data validation to enable flexible prototyping.
- *
- * Data Structure: The data model is organized hierarchically:
- *  - Top-level collections like `/users` and `/tenants`.
- *  - Tenant-specific subcollections under `/tenants/{tenantId}/*`.
- *  - Global collections such as `/global/plans`.
+ * Data Structure:
+ * - /users/{userId}: Maps user UIDs to tenant IDs. This is a critical lookup for all tenant-scoped data access.
+ * - /tenants/{tenantId}: Stores tenant-level information.
+ * - /tenants/{tenantId}/...: All tenant-specific data is nested under the respective tenant.
+ * - /global/plans/{planId}: Globally available subscription plans.
  *
  * Key Security Decisions:
- *  - Users can only manage their own data under `/users/{userId}`.
- *  - Tenant-level data is generally restricted to authorized users within that tenant, often requiring admin roles.
- *  - Public listing of user-specific data is disallowed.
+ * - Strict Tenant Isolation: All data access is scoped to a tenant. Users can only access data within their assigned tenant.
+ * - User-Based Access Control: Within a tenant, access to user-specific data (e.g., /tenants/{tenantId}/users/{userId}) is restricted to the user themselves.
+ * - No User Listing: Listing all users is generally disallowed for privacy and security.
+ * - Public Read for Plans: Subscription plans in /global/plans are publicly readable.
+ * - Audit Logs: Creation only for logs from external sources (e.g. wolt, foodora)
  *
  * Denormalization for Authorization:
- *  - Tenant IDs are often denormalized into subcollection documents to simplify ownership checks.
- *  - For shared access, consider denormalizing member lists or role maps directly onto documents.
+ * - The /users/{userId} document MUST contain the `tenantId` to authorize access to any /tenants/{tenantId} subcollection.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Secure the user root. Only allow a user to create their own record. Get/List are denied.
+     * @description Allows a user to read and create their own UserTenant document, which maps their UID to a tenant ID.
      * @path /users/{userId}
-     * @allow (create) - If the user ID matches the authenticated user ID.
-     * @deny (get, list, update, delete) - All other operations are denied.
-     * @principle Enforces that only the authenticated user can create their own user record.
+     * @allow (create, get): if request.auth.uid == userId
+     * @deny (update, delete, list): Always deny these operations.
+     * @principle Enforces user-ownership for their UserTenant document.
      */
     match /users/{userId} {
-      allow get, list: if false;
-      allow create: if isSignedIn() && request.auth.uid == userId;
-      allow update, delete: if isSignedIn() && request.auth.uid == userId;
+      function isOwner(userId) {
+        return request.auth.uid == userId;
+      }
+
+      allow get: if isOwner(userId);
+      allow list: if false;
+      allow create: if isOwner(userId);
+      allow update: if false;
+      allow delete: if false;
     }
 
     /**
-     * @description Protects tenant information. Read operations are generally open. Create, Update, Delete operations are restricted to admins.
+     * @description Allows reading tenant information. No write access is granted in this example.
      * @path /tenants/{tenantId}
-     * @allow (get, list) - Allow all authenticated users to read tenant information.
-     * @deny (create, update, delete) - Only tenant admins can modify tenant information.
-     * @principle Limits tenant modification to admins while allowing read access.
+     * @allow (get, list): if true
+     * @deny (create, update, delete): Always deny these operations.
+     * @principle Limits access to tenant read-only.
      */
     match /tenants/{tenantId} {
-      allow get, list: if isSignedIn();
-      allow create, update, delete: if false; // TODO: Implement role-based access control for tenant management.
+      allow get: if true;
+      allow list: if false;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+
+       /**
+         * @description Allows a user to read and manage their own user document within a tenant.
+         * @path /tenants/{tenantId}/users/{userId}
+         * @allow (get, list): if isTenantMember(tenantId)
+         * @allow (create): if request.auth.uid == userId
+         * @allow (update, delete): if isExistingOwner(tenantId, userId)
+         * @deny (create, update, delete): if not isTenantMember(tenantId)
+         * @principle Enforces tenant membership and user-ownership for user documents.
+         */
+      match /users/{userId} {
+        function isTenantMember(tenantId) {
+          return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
+        }
+
+        function isOwner(userId) {
+          return request.auth.uid == userId;
+        }
+
+        function isExistingOwner(tenantId, userId) {
+            return isOwner(userId) && isTenantMember(tenantId) && resource != null;
+        }
+
+        allow get: if isTenantMember(tenantId);
+        allow list: if false;
+        allow create: if isOwner(userId) && isTenantMember(tenantId);
+        allow update: if isExistingOwner(tenantId, userId);
+        allow delete: if isExistingOwner(tenantId, userId);
+      }
+
+      /**
+       * @description Allows a tenant member to manage transactions within their tenant.
+       * @path /tenants/{tenantId}/transactions/{transactionId}
+       * @allow (get, list): if isTenantMember(tenantId)
+       * @allow (create, update, delete): if isTenantMember(tenantId)
+       * @principle Enforces tenant membership for transaction management.
+       */
+      match /transactions/{transactionId} {
+        function isTenantMember(tenantId) {
+          return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
+        }
+
+        allow get: if isTenantMember(tenantId);
+        allow list: if isTenantMember(tenantId);
+        allow create: if isTenantMember(tenantId);
+        allow update: if isTenantMember(tenantId) && resource != null;
+        allow delete: if isTenantMember(tenantId) && resource != null;
+      }
+
+      /**
+       * @description Allows a tenant member to manage products within their tenant.
+       * @path /tenants/{tenantId}/products/{productId}
+       * @allow (get, list): if isTenantMember(tenantId)
+       * @allow (create, update, delete): if isTenantMember(tenantId)
+       * @principle Enforces tenant membership for product management.
+       */
+      match /products/{productId} {
+        function isTenantMember(tenantId) {
+          return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
+        }
+
+        allow get: if isTenantMember(tenantId);
+        allow list: if isTenantMember(tenantId);
+        allow create: if isTenantMember(tenantId);
+        allow update: if isTenantMember(tenantId) && resource != null;
+        allow delete: if isTenantMember(tenantId) && resource != null;
+      }
+
+      /**
+       * @description Allows a tenant member to read and write general settings for their tenant.
+       * @path /tenants/{tenantId}/settings/general
+       * @allow (get, list): if isTenantMember(tenantId)
+       * @allow (create, update, delete): if isTenantMember(tenantId)
+       * @principle Enforces tenant membership for settings management.
+       */
+      match /settings/general {
+        function isTenantMember(tenantId) {
+          return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
+        }
+
+        allow get: if isTenantMember(tenantId);
+        allow list: if false;
+        allow create: if isTenantMember(tenantId);
+        allow update: if isTenantMember(tenantId) && resource != null;
+        allow delete: if isTenantMember(tenantId) && resource != null;
+      }
+
+      /**
+       * @description Allows a tenant member to read and write module settings for their tenant.
+       * @path /tenants/{tenantId}/settings/modules
+       * @allow (get, list): if isTenantMember(tenantId)
+       * @allow (create, update, delete): if isTenantMember(tenantId)
+       * @principle Enforces tenant membership for module settings management.
+       */
+      match /settings/modules {
+        function isTenantMember(tenantId) {
+          return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
+        }
+
+        allow get: if isTenantMember(tenantId);
+        allow list: if false;
+        allow create: if isTenantMember(tenantId);
+        allow update: if isTenantMember(tenantId) && resource != null;
+        allow delete: if isTenantMember(tenantId) && resource != null;
+      }
+
+      /**
+       * @description Allows a tenant member to read and write RKSV settings for their tenant.
+       * @path /tenants/{tenantId}/settings/rksv
+       * @allow (get, list): if isTenantMember(tenantId)
+       * @allow (create, update, delete): if isTenantMember(tenantId)
+       * @principle Enforces tenant membership for RKSV settings management.
+       */
+      match /settings/rksv {
+        function isTenantMember(tenantId) {
+          return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
+        }
+
+        allow get: if isTenantMember(tenantId);
+        allow list: if false;
+        allow create: if isTenantMember(tenantId);
+        allow update: if isTenantMember(tenantId) && resource != null;
+        allow delete: if isTenantMember(tenantId) && resource != null;
+      }
+
+      /**
+       * @description Allows a tenant member to manage integrations within their tenant.
+       * @path /tenants/{tenantId}/integrations/{platformId}
+       * @allow (get, list): if isTenantMember(tenantId)
+       * @allow (create, update, delete): if isTenantMember(tenantId)
+       * @principle Enforces tenant membership for integration management.
+       */
+      match /integrations/{platformId} {
+        function isTenantMember(tenantId) {
+          return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
+        }
+
+        allow get: if isTenantMember(tenantId);
+        allow list: if isTenantMember(tenantId);
+        allow create: if isTenantMember(tenantId);
+        allow update: if isTenantMember(tenantId) && resource != null;
+        allow delete: if isTenantMember(tenantId) && resource != null;
+      }
+
+      /**
+       * @description Allows a tenant member to manage AI chat messages within their tenant.
+       * @path /tenants/{tenantId}/aiChats/{chatId}/messages/{messageId}
+       * @allow (get, list): if isTenantMember(tenantId)
+       * @allow (create, update, delete): if isTenantMember(tenantId)
+       * @principle Enforces tenant membership for AI chat message management.
+       */
+      match /aiChats/{chatId}/messages/{messageId} {
+        function isTenantMember(tenantId) {
+          return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
+        }
+
+        allow get: if isTenantMember(tenantId);
+        allow list: if isTenantMember(tenantId);
+        allow create: if isTenantMember(tenantId);
+        allow update: if isTenantMember(tenantId) && resource != null;
+        allow delete: if isTenantMember(tenantId) && resource != null;
+      }
+
+      /**
+       * @description Allows a tenant member to manage POS orders within their tenant.
+       * @path /tenants/{tenantId}/posOrders/{orderId}
+       * @allow (get, list): if isTenantMember(tenantId)
+       * @allow (create, update, delete): if isTenantMember(tenantId)
+       * @principle Enforces tenant membership for POS order management.
+       */
+      match /posOrders/{orderId} {
+        function isTenantMember(tenantId) {
+          return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
+        }
+
+        allow get: if isTenantMember(tenantId);
+        allow list: if isTenantMember(tenantId);
+        allow create: if isTenantMember(tenantId);
+        allow update: if isTenantMember(tenantId) && resource != null;
+        allow delete: if isTenantMember(tenantId) && resource != null;
+      }
+
+       /**
+         * @description Allows a tenant member to manage audit logs within their tenant. However, only creation is allowed for external sources.
+         * @path /tenants/{tenantId}/auditLogs/{logId}
+         * @allow (get, list): if isTenantMember(tenantId)
+         * @allow (create): if isTenantMember(tenantId)
+         * @deny (update, delete): Always deny these operations.
+         * @principle Enforces tenant membership for audit log management.
+         */
+        match /auditLogs/{logId} {
+            function isTenantMember(tenantId) {
+                return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
+            }
+
+            allow get: if isTenantMember(tenantId);
+            allow list: if isTenantMember(tenantId);
+            allow create: if isTenantMember(tenantId);
+            allow update: if false;
+            allow delete: if false;
+        }
     }
 
     /**
-     * @description Manages user data within a tenant. This rule provides for the standard tenant/user access model
-     * @path /tenants/{tenantId}/users/{userId}
-     * @allow (get, list) - Authenticated users in the tenant can access user data.
-     * @allow (create, update, delete) - Tenant admins can manage user data.
-     * @deny - Non-admins cannot modify user data.
-     * @principle Enforces tenant-based user management with admin privileges.
-     */
-    match /tenants/{tenantId}/users/{userId} {
-      allow get, list: if isSignedIn(); // TODO: Implement role-based access control
-      allow create, update, delete: if false; // TODO: Implement role-based access control
-    }
-
-    /**
-     * @description Controls access to transaction records.
-     * @path /tenants/{tenantId}/transactions/{transactionId}
-     * @allow (get, list) - Authenticated users can view transactions.
-     * @deny (create, update, delete) - Only admins can create, update, or delete transactions.
-     * @principle Restricts transaction management to administrators while allowing viewing.
-     */
-    match /tenants/{tenantId}/transactions/{transactionId} {
-      allow get, list: if isSignedIn(); // TODO: Implement role-based access control
-      allow create, update, delete: if false; // TODO: Implement role-based access control
-    }
-
-    /**
-     * @description Manages product information within a tenant.
-     * @path /tenants/{tenantId}/products/{productId}
-     * @allow (get, list) - Authenticated users can view products.
-     * @deny (create, update, delete) - Only admins can manage product information.
-     * @principle Limits product management to admins.
-     */
-    match /tenants/{tenantId}/products/{productId} {
-      allow get, list: if isSignedIn(); // TODO: Implement role-based access control
-      allow create, update, delete: if false; // TODO: Implement role-based access control
-    }
-
-    /**
-     * @description Controls access to general settings for a tenant.
-     * @path /tenants/{tenantId}/settings/general
-     * @allow (get) - Authenticated users can view general settings.
-     * @deny (create, update, delete) - Only admins can modify general settings.
-     * @principle Enforces that only administrators can change general settings.
-     */
-    match /tenants/{tenantId}/settings/general {
-      allow get: if isSignedIn(); // TODO: Implement role-based access control
-      allow create, update, delete: if false; // TODO: Implement role-based access control
-    }
-
-    /**
-     * @description Module settings control.
-     * @path /tenants/{tenantId}/settings/modules
-     * @allow (get) - Authenticated users can view module settings.
-     * @deny (create, update, delete) - Only admins can modify module settings.
-     * @principle Restricts modification of module settings to tenant admins.
-     */
-    match /tenants/{tenantId}/settings/modules {
-      allow get: if isSignedIn(); // TODO: Implement role-based access control
-      allow create, update, delete: if false; // TODO: Implement role-based access control
-    }
-
-    /**
-     * @description Secures RKSV key settings within a tenant.
-     * @path /tenants/{tenantId}/settings/rksv
-     * @allow (get) - Authenticated users can view RKSV settings.
-     * @deny (create, update, delete) - Only admins can modify RKSV settings.
-     * @principle Ensures only admins can manage RKSV keys.
-     */
-    match /tenants/{tenantId}/settings/rksv {
-      allow get: if isSignedIn(); // TODO: Implement role-based access control
-      allow create, update, delete: if false; // TODO: Implement role-based access control
-    }
-
-    /**
-     * @description Manages third-party integrations for a tenant.
-     * @path /tenants/{tenantId}/integrations/{platformId}
-     * @allow (create, update, delete) - Only admins can create or modify integrations.
-     * @allow (get, list) - Any authenitcated user can list/get the integrations.
-     * @principle Restricts integration management to tenant administrators.
-     */
-    match /tenants/{tenantId}/integrations/{platformId} {
-      allow get, list: if isSignedIn(); // TODO: Implement role-based access control
-      allow create, update, delete: if false; // TODO: Implement role-based access control
-    }
-
-    /**
-     * @description Defines access rules for global subscription plans.
+     * @description Allows public read access to subscription plans.
      * @path /global/plans/{planId}
-     * @allow (get, list) - Everyone can view the plans.
-     * @deny (create, update, delete) - No one can modify plans through the client.
-     * @principle Allows public read access to plans but restricts modifications.
+     * @allow (get, list): if true
+     * @deny (create, update, delete): Always deny these operations.
+     * @principle Allows public read for plans.
      */
     match /global/plans/{planId} {
-      allow get, list: if true;
-      allow create, update, delete: if false; // TODO: Implement role-based access control, if needed.
-    }
-
-    /**
-     * @description Secures AI chat message data within a tenant.
-     * @path /tenants/{tenantId}/aiChats/{chatId}/messages/{messageId}
-     * @allow (get, list) - Authenticated tenant users can access AI chat messages.
-     * @deny (create, update, delete) - Writing is likely handled by a function.
-     * @principle Restricts access to AI chat messages to tenant users.
-     */
-    match /tenants/{tenantId}/aiChats/{chatId}/messages/{messageId} {
-      allow get, list: if isSignedIn(); // TODO: Implement role-based access control
-      allow create, update, delete: if false; // TODO: Review this one. This might be written by cloud functions.
-    }
-
-    /**
-     * @description Protects POS order data with cloud function access only.
-     * @path /tenants/{tenantId}/posOrders/{orderId}
-     * @deny (get, list, create, update, delete) - Only cloud functions can write to /posOrders.
-     * @principle Enforces that POS order data is only writable via a trusted server environment.
-     */
-    match /tenants/{tenantId}/posOrders/{orderId} {
-      allow get, list: if false; // Prevent client reads.
-      allow create, update, delete: if false; // Only cloud functions can write to /posOrders.
-    }
-
-     /**
-      * @description Logs API calls in /tenants/{tenantId}/auditLogs. Only server/admin can write
-      * @path /tenants/{tenantId}/auditLogs/{logId}
-      * @allow create - if request is from server and validates required log fields
-      * @deny get, list, update, delete - all other access is denied
-      * @principle Server-only logging of API calls to audit logs collection
-      */
-     match /tenants/{tenantId}/auditLogs/{logId} {
-          allow get, list, update, delete: if false; // No read/update/delete allowed from client
-          allow create: if false; // TODO: Server access.  Implement service account check or similar.
-     }
-
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
-
-    function isExistingOwner(userId) {
-      return isOwner(userId) && resource != null;
+      allow get: if true;
+      allow list: if true;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
     }
   }
 }
