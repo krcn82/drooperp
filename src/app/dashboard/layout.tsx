@@ -75,29 +75,36 @@ export default function DashboardLayout({children}: {children: React.ReactNode})
   const [isNotificationsOpen, setNotificationsOpen] = useState(false);
 
   useEffect(() => {
+    // Wait for user to be loaded before trying to access tenantId
+    if (!isUserLoading && user) {
       const storedTenantId = localStorage.getItem('tenantId');
       if (storedTenantId) {
           const sanitizedId = sanitizeTenantId(storedTenantId);
           setTenantId(sanitizedId);
           // Also update localStorage to be clean for next time
-          localStorage.setItem('tenantId', sanitizedId);
-      } else if (user && !isUserLoading) {
+          if (storedTenantId !== sanitizedId) {
+            localStorage.setItem('tenantId', sanitizedId);
+          }
+      } else {
           router.push('/login'); // Or a tenant selection page
       }
+    } else if (!isUserLoading && !user) {
+        router.push('/login');
+    }
   }, [user, isUserLoading, router]);
 
   const moduleSettingsRef = useMemoFirebase(() => {
     // Prevent query from running before user is loaded and tenantId is set
-    if (!firestore || !tenantId || isUserLoading || !user) return null;
+    if (!firestore || !tenantId || !user) return null;
     return doc(firestore, `tenants/${tenantId}/settings/modules`);
-  }, [firestore, tenantId, isUserLoading, user]);
+  }, [firestore, tenantId, user]);
 
   const { data: moduleSettings, isLoading: areModulesLoading } = useDoc<ModuleSettings>(moduleSettingsRef);
   
   const notificationsQuery = useMemoFirebase(() => {
-    if (!firestore || !tenantId) return null;
+    if (!firestore || !tenantId || !user) return null;
     return query(collection(firestore, `tenants/${tenantId}/notifications`), where('read', '==', false));
-  }, [firestore, tenantId]);
+  }, [firestore, tenantId, user]);
 
   const { data: unreadNotifications } = useCollection<Notification>(notificationsQuery);
   const unreadCount = unreadNotifications?.length || 0;
@@ -116,13 +123,6 @@ export default function DashboardLayout({children}: {children: React.ReactNode})
     
   }, [moduleSettings, areModulesLoading]);
 
-
-  useEffect(() => {
-    if (isUserLoading) return;
-    if (!user) {
-      router.push('/login');
-    }
-  }, [user, isUserLoading, router]);
 
   const handleLogout = async () => {
     if (auth) {
@@ -145,7 +145,7 @@ export default function DashboardLayout({children}: {children: React.ReactNode})
     </Link>
   );
 
-  const isLoading = isUserLoading || !user;
+  const isLoading = isUserLoading || !user || !tenantId;
 
   if (isLoading) {
     return (
