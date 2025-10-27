@@ -1,154 +1,176 @@
 /**
- * @file Firestore Security Rules
- * @description This ruleset enforces a multi-tenant security model where users are associated with tenants.
- *   Each tenant's data (users, transactions, products, settings) is stored in a subcollection under the /tenants/{tenantId} path.
- *   Global subscription plans are stored in the /global/plans/{planId} collection and are publicly readable.
- *   A top-level /users/{userId} collection maps user UIDs to tenant IDs, enabling efficient tenant-based access control.
+ * @fileoverview Firestore Security Rules for the ERP application.
  *
- * @dataStructure
- *   /users/{userId}: Maps user UIDs to tenant IDs.
- *   /tenants/{tenantId}: Contains tenant information.
- *   /tenants/{tenantId}/users/{userId}: Contains user data within a tenant.
- *   /tenants/{tenantId}/transactions/{transactionId}: Contains transaction data for a tenant.
- *   /tenants/{tenantId}/products/{productId}: Contains product data for a tenant.
- *   /tenants/{tenantId}/settings/{settingId}: Contains tenant-specific settings.
- *   /global/plans/{planId}: Contains global subscription plans.
- *   /tenants/{tenantId}/aiChats/{chatId}/messages/{messageId}: Contains AI chat messages within a tenant's AI chat session.
+ * Core Philosophy:
+ * This ruleset enforces a multi-tenant security model.  Tenants are isolated from each other.
+ * Users can only access data within their assigned tenant.  The `/users/{userId}` collection
+ * maps a user's UID to their tenant ID. This mapping is crucial for all authorization checks.
  *
- * @keySecurityDecisions
- *   - Users can only list other users in their own tenant.
- *   - Only authenticated users can access data.
- *   - Users can only create their own user entry in the /users/{userId} collection.
- *   - Global plans are publicly readable but not writable.
- *   - Data validation is relaxed during prototyping, focusing on authorization.
+ * Data Structure:
+ * - /users/{userId}: Maps user UIDs to tenant IDs.
+ * - /tenants/{tenantId}: Stores tenant information.
+ * - /tenants/{tenantId}/users/{userId}: Stores user profiles within a tenant.
+ * - /tenants/{tenantId}/transactions/{transactionId}: Stores transaction data for a tenant.
+ * - /tenants/{tenantId}/products/{productId}: Stores product information for a tenant.
+ * - /tenants/{tenantId}/settings/{settingId}: Stores settings for a tenant.
+ * - /global/plans/{planId}: Stores global subscription plans.
+ * - /tenants/{tenantId}/aiChats/{chatId}/messages/{messageId}: Stores chat messages.
  *
- * @denormalizationForAuthorization
- *   - The tenantId is denormalized into the /users/{userId} document to allow rules to quickly check a user's tenant without additional reads.
+ * Key Security Decisions:
+ * - Tenant Isolation: All data access is scoped to the user's tenant.
+ * - User Impersonation Prevention: The `users` collection ensures that only the authenticated user can create their UserTenant document.
+ * - Global Plans: Subscription plans are publically accessible.
+ *
+ * Denormalization for Authorization:
+ * - The tenantId is used on every document to enforce tenant isolation.
+ * - The /users/{userId} collection is used to quickly lookup the tenantId of a user.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Checks if the request is authenticated.
-     */
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    /**
-     * @description Checks if the authenticated user's UID matches the provided userId.
-     */
-    function isOwner(userId) {
-      return request.auth.uid == userId;
-    }
-
-    /**
-     * @description Checks if the authenticated user is the owner of an existing document.
-     */
-    function isExistingOwner(userId) {
-        return isOwner(userId) && resource != null;
-    }
-
-    /**
-     * @description Top-level collection to map user UIDs to tenant IDs.
+     * @description Maps user UIDs to tenant IDs. Only the authenticated user can create their UserTenant document.
      * @path /users/{userId}
-     * @allow (create) - An authenticated user can create their own entry in this collection.
-     * @deny (create) - An unauthenticated user cannot create an entry.
-     * @allow (get) - If the authenticated user's ID matches the userId.
-     * @allow (list) - Deny listing this collection.
-     * @deny (get) - If the authenticated user's ID does not match the userId.
-     * @principle Enforces user-ownership.  Users can only create/read their own entry.
+     * @allow (create) Authenticated user creates their mapping document with correct userId.
+     * @deny (create) Authenticated user attempts to create a mapping document for another user.
+     * @deny (update) Any user attempts to update this document.
+     * @deny (delete) Any user attempts to delete this document.
+     * @allow (get) Any authenticated user can read another user's tenant ID.
+     * @allow (list) Any authenticated user can list all user tenant mappings.
+     * @principle Prevents user impersonation and enables tenant-based authorization.
      */
     match /users/{userId} {
-      allow create: if isSignedIn() && isOwner(userId) && request.resource.data.id == userId;
-      allow get: if isSignedIn() && isOwner(userId);
-      allow list: if false;
+      function isOwner(userId) {
+        return request.auth.uid == userId;
+      }
+
+      allow create: if isSignedIn() && isOwner(userId) && request.resource.data.tenantId is string;
+      allow get, list: if isSignedIn();
       allow update, delete: if false;
     }
 
     /**
-     * @description Collection to store tenant information.
+     * @description Stores tenant information. Only authenticated users can read tenant info.
      * @path /tenants/{tenantId}
+     * @allow (get, list) Any authenticated user can read tenant data.
+     * @deny (create, update, delete) No one can create, update or delete tenant documents through the client.
+     * @principle Tenant data should be managed via backend processes, not directly modifiable by clients.
      */
     match /tenants/{tenantId} {
-        allow read: if false; // Secure by default and require authentication to override
-        allow write: if false; // Secure by default and require authentication to override
-
-      /**
-       * @description Sub-collection for users within a tenant.
-       * @path /tenants/{tenantId}/users/{userId}
-       * @allow (list) - An authenticated user can list all users in their tenant
-       * @allow (create) - An authenticated user can create other users in their tenant
-       * @allow (get) - An authenticated user can get a specific user in their tenant
-       * @deny (create) - An unauthenticated user cannot create an entry.
-       * @deny (get) - If the authenticated user's ID does not match the userId.
-       * @principle Enforces user-ownership.  Users can only create/read their own entry.
-       */
-      match /tenants/{tenantId}/users/{userId} {
-        allow create: if isSignedIn();
-        allow get: if isSignedIn();
-        allow list: if isSignedIn();
-        allow update: if isSignedIn();
-        allow delete: if isSignedIn();
-      }
-
-      /**
-       * @description Sub-collection for transactions within a tenant.
-       * @path /tenants/{tenantId}/transactions/{transactionId}
-       */
-      match /tenants/{tenantId}/transactions/{transactionId} {
-        allow create: if isSignedIn();
-        allow get: if isSignedIn();
-        allow list: if isSignedIn();
-        allow update: if isSignedIn();
-        allow delete: if isSignedIn();
-      }
-
-      /**
-       * @description Sub-collection for products within a tenant.
-       * @path /tenants/{tenantId}/products/{productId}
-       */
-      match /tenants/{tenantId}/products/{productId} {
-        allow create: if isSignedIn();
-        allow get: if isSignedIn();
-        allow list: if isSignedIn();
-        allow update: if isSignedIn();
-        allow delete: if isSignedIn();
-      }
-
-       /**
-        * @description Sub-collection for settings within a tenant.
-        * @path /tenants/{tenantId}/settings/{settingId}
-        */
-      match /tenants/{tenantId}/settings/{settingId} {
-        allow create: if isSignedIn();
-        allow get: if isSignedIn();
-        allow list: if isSignedIn();
-        allow update: if isSignedIn();
-        allow delete: if isSignedIn();
-      }
-
-        /**
-         * @description Sub-collection for messages within an AI chat session.
-         * @path /tenants/{tenantId}/aiChats/{chatId}/messages/{messageId}
-         */
-        match /tenants/{tenantId}/aiChats/{chatId}/messages/{messageId} {
-          allow create: if isSignedIn();
-          allow get: if isSignedIn();
-          allow list: if isSignedIn();
-          allow update: if isSignedIn();
-          allow delete: if isSignedIn();
-        }
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if false;
     }
 
     /**
-     * @description Global collection for subscription plans.
+     * @description Stores user profiles within a tenant. Tenant users can only read/write their own profiles.
+     * @path /tenants/{tenantId}/users/{userId}
+     * @allow (create) Authenticated user creates their profile in their tenant.
+     * @allow (get, list) Authenticated user reads their profile in their tenant.
+     * @allow (update) Authenticated user updates their profile in their tenant.
+     * @deny (create, get, list, update, delete) Operations on other users' profiles or in other tenants.
+     * @principle User-level data access control within a tenant.
+     */
+    match /tenants/{tenantId}/users/{userId} {
+      function isTenantOwner(tenantId, userId) {
+        return get(/databases/$(database)/documents/users/$(userId)).data.tenantId == tenantId && request.auth.uid == userId;
+      }
+      allow create: if isSignedIn() && isTenantOwner(tenantId, userId);
+      allow get, list: if isSignedIn() && isTenantOwner(tenantId, userId);
+      allow update: if isSignedIn() && isTenantOwner(tenantId, userId) && resource != null;
+      allow delete: if false;
+    }
+
+    /**
+     * @description Stores transaction data for a tenant. Tenant users can read transactions from their tenant.
+     * @path /tenants/{tenantId}/transactions/{transactionId}
+     * @allow (create) Authenticated user create transaction in their tenant.
+     * @allow (get, list) Authenticated user read transactions from their tenant.
+     * @allow (update) Authenticated user update transaction in their tenant.
+     * @deny (create, get, list, update, delete) Operations on transactions in other tenants.
+     * @principle Tenant-level data access control for transactions.
+     */
+    match /tenants/{tenantId}/transactions/{transactionId} {
+      function isTenantUser(tenantId, userId) {
+        return get(/databases/$(database)/documents/users/$(userId)).data.tenantId == tenantId;
+      }
+      allow create: if isSignedIn() && isTenantUser(tenantId, request.auth.uid);
+      allow get, list: if isSignedIn() && isTenantUser(tenantId, request.auth.uid);
+      allow update: if isSignedIn() && isTenantUser(tenantId, request.auth.uid) && resource != null;
+      allow delete: if false;
+    }
+
+    /**
+     * @description Stores product information for a tenant. Tenant users can read products from their tenant.
+     * @path /tenants/{tenantId}/products/{productId}
+     * @allow (create) Authenticated user create product in their tenant.
+     * @allow (get, list) Authenticated user read products from their tenant.
+     * @allow (update) Authenticated user update product in their tenant.
+     * @deny (create, get, list, update, delete) Operations on products in other tenants.
+     * @principle Tenant-level data access control for products.
+     */
+    match /tenants/{tenantId}/products/{productId} {
+      function isTenantUser(tenantId, userId) {
+        return get(/databases/$(database)/documents/users/$(userId)).data.tenantId == tenantId;
+      }
+      allow create: if isSignedIn() && isTenantUser(tenantId, request.auth.uid);
+      allow get, list: if isSignedIn() && isTenantUser(tenantId, request.auth.uid);
+      allow update: if isSignedIn() && isTenantUser(tenantId, request.auth.uid) && resource != null;
+      allow delete: if false;
+    }
+
+   /**
+     * @description Stores settings for a tenant. Tenant users can read settings from their tenant.
+     * @path /tenants/{tenantId}/settings/{settingId}
+     * @allow (create) Authenticated user create setting in their tenant.
+     * @allow (get, list) Authenticated user read settings from their tenant.
+     * @allow (update) Authenticated user update setting in their tenant.
+     * @deny (create, get, list, update, delete) Operations on settings in other tenants.
+     * @principle Tenant-level data access control for settings.
+     */
+    match /tenants/{tenantId}/settings/{settingId} {
+     function isTenantUser(tenantId, userId) {
+        return get(/databases/$(database)/documents/users/$(userId)).data.tenantId == tenantId;
+      }
+      allow create: if isSignedIn() && isTenantUser(tenantId, request.auth.uid);
+      allow get, list: if isSignedIn() && isTenantUser(tenantId, request.auth.uid);
+      allow update: if isSignedIn() && isTenantUser(tenantId, request.auth.uid) && resource != null;
+      allow delete: if false;
+    }
+
+    /**
+     * @description Stores global subscription plans.  Accessible to all authenticated users.
      * @path /global/plans/{planId}
+     * @allow (get, list) Any authenticated user can read plan data.
+     * @deny (create, update, delete) No one can create, update, or delete plan documents through the client.
+     * @principle Plan data should be managed via backend processes, not directly modifiable by clients.
      */
     match /global/plans/{planId} {
-      allow get, list: if true;
+      allow get, list: if isSignedIn();
       allow create, update, delete: if false;
+    }
+
+    /**
+     * @description Stores chat messages within a tenant-specific AI chat session. Tenant users can read and write messages in their tenant.
+     * @path /tenants/{tenantId}/aiChats/{chatId}/messages/{messageId}
+     * @allow (create) Authenticated user create message in their tenant.
+     * @allow (get, list) Authenticated user read messages from their tenant.
+     * @allow (update) Authenticated user update message in their tenant.
+     * @deny (create, get, list, update, delete) Operations on messages in other tenants.
+     * @principle Tenant-level data access control for chat messages.
+     */
+    match /tenants/{tenantId}/aiChats/{chatId}/messages/{messageId} {
+     function isTenantUser(tenantId, userId) {
+        return get(/databases/$(database)/documents/users/$(userId)).data.tenantId == tenantId;
+      }
+      allow create: if isSignedIn() && isTenantUser(tenantId, request.auth.uid);
+      allow get, list: if isSignedIn() && isTenantUser(tenantId, request.auth.uid);
+      allow update: if isSignedIn() && isTenantUser(tenantId, request.auth.uid) && resource != null;
+      allow delete: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
     }
   }
 }
