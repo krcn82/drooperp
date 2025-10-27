@@ -37,7 +37,7 @@ const allNavItems = [
   {id: 'kds', href: '/kds', icon: CookingPot, label: 'Kitchen Display'},
   {id: 'reports', href: '/dashboard/reports', icon: LineChart, label: 'Reports'},
   {id: 'assets', href: '/dashboard/assets', icon: FileUp, label: 'Invoices & Assets'},
-  {id: 'datev', href: '/dashboard/datev-export', icon: FileDown, label: 'DATEV Export'},
+  {id: 'datev-export', href: '/dashboard/datev-export', icon: FileDown, label: 'DATEV Export'},
   {id: 'calendar', href: '/dashboard/calendar', icon: Calendar, label: 'Calendar', disabled: true},
   {id: 'kiosk', href: '/kiosk', icon: Contact, label: 'Kiosk', disabled: true },
   {id: 'gdpr', href: '/dashboard/gdpr', icon: ShieldCheck, label: 'GDPR Tools'},
@@ -79,9 +79,9 @@ export default function DashboardLayout({children}: {children: React.ReactNode})
   const { data: moduleSettings, isLoading: areModulesLoading } = useDoc<ModuleSettings>(moduleSettingsRef);
   
   const navItems = useMemo(() => {
-    if (areModulesLoading || !moduleSettings) return allNavItems.filter(item => ['dashboard', 'reports', 'assets', 'datev', 'gdpr', 'settings'].includes(item.id)); // show core items while loading
+    if (areModulesLoading || !moduleSettings) return allNavItems.filter(item => ['dashboard', 'reports', 'assets', 'datev-export', 'gdpr', 'settings'].includes(item.id)); // show core items while loading
     
-    const visibleItems = new Set(['dashboard', 'reports', 'assets', 'datev', 'gdpr', 'settings']);
+    const visibleItems = new Set(['dashboard', 'reports', 'assets', 'datev-export', 'gdpr', 'settings']);
     
     if (moduleSettings.posShop || moduleSettings.posRestaurant) visibleItems.add('pos');
     if (moduleSettings.posRestaurant) visibleItems.add('kds');
