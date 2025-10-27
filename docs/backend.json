@@ -66,6 +66,11 @@
         "subscriptionId": {
           "type": "string",
           "description": "Reference to Subscription. (Relationship: Subscription 1:N Tenant)"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "inactive", "deleted"],
+          "description": "The current status of the tenant."
         }
       },
       "required": [
@@ -153,6 +158,10 @@
         "price": {
           "type": "number",
           "description": "Price of the product."
+        },
+        "quantity": {
+            "type": "number",
+            "description": "The current stock quantity of the product."
         }
       },
       "required": [
