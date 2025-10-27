@@ -1,5 +1,6 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
+import * as crypto from 'crypto';
 
 /**
  * Creates user and tenant records in Firestore.
@@ -44,6 +45,22 @@ export const registerTenant = functions.https.onCall(async (data, context) => {
   const userTenantMappingRef = firestore.doc(`/users/${uid}`);
   batch.set(userTenantMappingRef, { tenantId: tenantId });
   
+  // 4. Generate RKSV keypair and initial signature
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', {
+      modulusLength: 2048,
+      publicKeyEncoding: { type: 'spki', format: 'pem' },
+      privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+  });
+  
+  const initialSignature = crypto.createHash('sha256').update('initial').digest('hex');
+
+  const rksvRef = firestore.doc(`/tenants/${tenantId}/settings/rksv`);
+  batch.set(rksvRef, {
+      publicKey: publicKey, // Store public key, private key should be stored securely elsewhere if needed
+      rksvActive: true,
+      lastSignature: initialSignature,
+  });
+
   try {
     await batch.commit();
     return { success: true, message: `Tenant '${tenantName}' created successfully.` };

@@ -1,7 +1,7 @@
 'use server';
 
-import { addDocumentNonBlocking, initializeFirebase } from '@/firebase';
-import { collection, serverTimestamp } from 'firebase/firestore';
+import { initializeFirebase } from '@/firebase';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 type TransactionData = {
   productIds: string[];
@@ -9,37 +9,28 @@ type TransactionData = {
   cashierUserId: string;
   amountTotal: number;
   paymentMethod: 'cash' | 'card';
+  type: 'shop' | 'restaurant';
 };
 
-// This function is designed to be non-blocking on the client side.
-// It initiates the write and returns a promise that resolves with success/failure,
-// while permission errors are handled globally by the FirestorePermissionError system.
 export async function recordTransaction(tenantId: string, data: TransactionData) {
   if (!tenantId) {
-    // This is a validation error, not a permission error, so we can return it directly.
     return { success: false, message: 'Tenant ID is missing.' };
   }
 
-  const { firestore } = initializeFirebase();
-  const transactionsRef = collection(firestore, `tenants/${tenantId}/transactions`);
-
+  const { firebaseApp } = initializeFirebase();
+  const functions = getFunctions(firebaseApp);
+  
   try {
-    // addDocumentNonBlocking returns a promise with the doc reference.
-    // It also has a .catch() internally that emits permission errors.
-    const docRef = await addDocumentNonBlocking(transactionsRef, {
-      ...data,
-      timestamp: serverTimestamp(),
-    });
-    
-    // If we get here, the local cache was updated and the write is pending.
-    // We can optimistically return success.
-    return { success: true, transactionId: docRef.id };
-  } catch (error) {
-    // This outer catch will now primarily handle non-permission errors
-    // (e.g., network issues if offline persistence is disabled),
-    // as permission errors are handled inside addDocumentNonBlocking.
-    console.error('Failed to record transaction:', error);
-    
-    return { success: false, message: 'Could not save transaction to the database.' };
+    const recordTransactionFn = httpsCallable(functions, 'recordTransaction');
+    const result: any = await recordTransactionFn({ tenantId, transactionData: data });
+
+    if (result.data.status === 'success') {
+      return { success: true, transactionId: result.data.transactionId, qrCode: result.data.qrCode };
+    } else {
+      return { success: false, message: 'Cloud function reported an error.' };
+    }
+  } catch (error: any) {
+    console.error('Failed to record transaction via cloud function:', error);
+    return { success: false, message: error.message || 'Could not save transaction.' };
   }
 }

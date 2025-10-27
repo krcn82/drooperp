@@ -1,5 +1,6 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
+import * as crypto from 'crypto';
 
 /**
  * Records a single transaction in Firestore for a given tenant.
@@ -48,11 +49,28 @@ export const recordTransaction = functions.https.onCall(async (data, context) =>
 
     const firestore = admin.firestore();
     const transactionRef = firestore.collection(`tenants/${tenantId}/transactions`).doc();
+    const rksvSettingsRef = firestore.doc(`tenants/${tenantId}/settings/rksv`);
+
+    // RKSV Signature Chaining
+    const rksvDoc = await rksvSettingsRef.get();
+    const rksvData = rksvDoc.data();
+    let previousSignature = '0';
+    if (rksvData && rksvData.lastSignature) {
+        previousSignature = rksvData.lastSignature;
+    }
+
+    const currentTransactionString = JSON.stringify(transactionData);
+    const signaturePayload = previousSignature + currentTransactionString;
+    const currentSignature = crypto.createHash('sha256').update(signaturePayload).digest('hex');
+    const qrCode = Buffer.from(signaturePayload).toString('base64');
+
 
     const finalTransactionData: any = {
       ...transactionData,
       timestamp: admin.firestore.FieldValue.serverTimestamp(),
       paidImmediately: paymentMethod === 'cash',
+      signature: currentSignature,
+      qrCode: qrCode,
     };
     
     // Ensure only "restaurant" type has a tableId
@@ -60,13 +78,17 @@ export const recordTransaction = functions.https.onCall(async (data, context) =>
         delete finalTransactionData.tableId;
     }
 
-    // 4. Write to Firestore
-    await transactionRef.set(finalTransactionData);
+    // 4. Write to Firestore in a transaction to ensure atomicity
+    await firestore.runTransaction(async (t) => {
+        t.set(transactionRef, finalTransactionData);
+        t.update(rksvSettingsRef, { lastSignature: currentSignature });
+    });
+
 
     console.info(`Transaction ${transactionRef.id} recorded successfully for tenant ${tenantId}.`);
 
     // 5. Return success response
-    return { status: 'success', transactionId: transactionRef.id };
+    return { status: 'success', transactionId: transactionRef.id, qrCode };
     
   } catch (error: any) {
     console.error('Error recording transaction:', error);

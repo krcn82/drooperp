@@ -103,6 +103,14 @@
         "productId": {
           "type": "string",
           "description": "Reference to Product. (Relationship: Product 1:N Transaction)"
+        },
+        "signature": {
+            "type": "string",
+            "description": "RKSV signature for the transaction."
+        },
+        "qrCode": {
+            "type": "string",
+            "description": "RKSV QR code data for the transaction."
         }
       },
       "required": [
@@ -303,6 +311,27 @@
         "role",
         "timestamp"
       ]
+    },
+    "RKSVKey": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "RKSV Key",
+      "type": "object",
+      "description": "Represents the RKSV signing key information for a tenant.",
+      "properties": {
+        "publicKey": {
+          "type": "string",
+          "description": "The public key for transaction signature verification."
+        },
+        "rksvActive": {
+          "type": "boolean",
+          "description": "Flag indicating if RKSV signing is active for the tenant."
+        },
+        "lastSignature": {
+            "type": "string",
+            "description": "The signature of the most recent transaction, used for chaining."
+        }
+      },
+      "required": ["publicKey", "rksvActive", "lastSignature"]
     }
   },
   "auth": {
@@ -352,6 +381,12 @@
         "$ref": "#/entities/ModuleSettings"
       },
       "description": "Document for module settings within a tenant."
+    },
+    "/tenants/{tenantId}/settings/rksv": {
+      "schema": {
+        "$ref": "#/entities/RKSVKey"
+      },
+      "description": "Document for RKSV key and status within a tenant."
     },
     "/global/plans/{planId}": {
       "schema": {

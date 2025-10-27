@@ -44,7 +44,7 @@ export default function PosPage() {
   const [isClient, setIsClient] = useState(false);
   const [isPaymentOpen, setPaymentOpen] = useState(false);
   const [isConfirmationOpen, setConfirmationOpen] = useState(false);
-  const [lastTransactionId, setLastTransactionId] = useState('');
+  const [lastTransactionInfo, setLastTransactionInfo] = useState({ id: '', qrCode: ''});
   const [isOffline, setIsOffline] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
@@ -114,12 +114,14 @@ export default function PosPage() {
       cashierUserId: user.uid,
       amountTotal: total,
       paymentMethod,
+      type: 'shop' as 'shop' | 'restaurant',
+      items: cart.map(i => ({ name: i.name, qty: i.quantity, price: i.price, productId: i.productId }))
     };
 
     const result = await recordTransaction(tenantId, transactionData);
 
     if (result.success && result.transactionId) {
-      setLastTransactionId(result.transactionId);
+      setLastTransactionInfo({ id: result.transactionId, qrCode: result.qrCode || '' });
       setPaymentOpen(false);
       setConfirmationOpen(true);
       setCart([]);
@@ -407,11 +409,11 @@ export default function PosPage() {
            <DialogHeader>
             <DialogTitle>Transaction Successful</DialogTitle>
             <DialogDescription>
-              Transaction ID: {lastTransactionId}
+              Transaction ID: {lastTransactionInfo.id}
             </DialogDescription>
           </DialogHeader>
            <div className="flex items-center justify-center my-4">
-            <QRCode value={`transaction:${lastTransactionId}`} size={200} />
+            <QRCode value={lastTransactionInfo.qrCode} size={200} />
           </div>
           <DialogFooter className="sm:justify-center">
             <Button type="button" onClick={() => setConfirmationOpen(false)}>
