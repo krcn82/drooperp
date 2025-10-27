@@ -64,11 +64,11 @@ export async function registerTenant(prevState: State, formData: FormData): Prom
   // 2. Create the tenant document
   const tenantRef = doc(firestore, 'tenants', tenantId);
   const tenantData = {
-    id: tenantId,
     name: tenantName,
-    ownerEmail: email,
     createdAt: serverTimestamp(),
-    plan: 'free',
+    ownerEmail: email,
+    plan: 'Free',
+    status: 'active',
   };
   // This function does not block and handles permission errors automatically
   setDocumentNonBlocking(tenantRef, tenantData, {});

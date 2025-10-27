@@ -65,6 +65,14 @@ export default function AccountSettings() {
     });
   };
   
+  const handleCreateCompany = () => {
+    // This would typically open a dialog or redirect to a new tenant creation page.
+    toast({
+      title: "Feature not implemented",
+      description: "Functionality to create a new company will be added here.",
+    });
+  };
+
   const InfoRow = ({ label, value, loading }: { label: string; value: string | undefined; loading: boolean }) => (
     <div className="flex justify-between items-center py-3 border-b">
       <span className="text-sm text-muted-foreground">{label}</span>
@@ -84,6 +92,7 @@ export default function AccountSettings() {
         <InfoRow label="Creation Date" value={tenant?.createdAt?.toDate().toLocaleDateString()} loading={isTenantLoading} />
       </CardContent>
       <CardFooter className="flex-col sm:flex-row gap-2 items-start sm:items-center">
+        <Button variant="outline" onClick={handleCreateCompany}>Create New Company</Button>
         <Button variant="outline" onClick={handleExport}>Export My Data</Button>
         <AlertDialog>
           <AlertDialogTrigger asChild>
