@@ -566,6 +566,10 @@
           "type": "string",
           "description": "Reference to the Transaction."
         },
+        "cashRegisterId": {
+          "type": "string",
+          "description": "Reference to the active cash register session."
+        },
         "method": {
           "type": "string",
           "enum": ["cash", "card", "stripe", "bankomat"],
@@ -604,6 +608,41 @@
         }
       },
       "required": ["clientSecret"]
+    },
+    "CashRegister": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Cash Register",
+      "type": "object",
+      "description": "Represents a cash drawer session for a cashier.",
+      "properties": {
+        "id": { "type": "string", "description": "Unique ID for the session." },
+        "tenantId": { "type": "string" },
+        "cashierId": { "type": "string", "description": "The UID of the user who opened the session." },
+        "cashierName": { "type": "string" },
+        "status": { "type": "string", "enum": ["open", "closed"] },
+        "openingBalance": { "type": "number" },
+        "closingBalance": { "type": "number" },
+        "totalSales": { "type": "number" },
+        "totalCashSales": { "type": "number" },
+        "openedAt": { "type": "string", "format": "date-time" },
+        "closedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "tenantId", "cashierId", "status", "openingBalance", "openedAt"]
+    },
+    "Report": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Report",
+      "type": "object",
+      "description": "Represents a generated report, like a Z-Bericht.",
+      "properties": {
+        "id": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "type": { "type": "string", "enum": ["z-report", "daily-summary"] },
+        "generatedAt": { "type": "string", "format": "date-time" },
+        "data": { "type": "object", "description": "The raw data used to generate the report." },
+        "fileUrl": { "type": "string", "description": "URL to the generated PDF/CSV file in Cloud Storage." }
+      },
+      "required": ["id", "tenantId", "type", "generatedAt", "data"]
     }
   },
   "auth": {
@@ -678,6 +717,18 @@
       },
       "description": "Stores credentials and status for third-party integrations like Wolt or Foodora."
     },
+    "/tenants/{tenantId}/cashRegisters/{registerId}": {
+      "schema": {
+        "$ref": "#/entities/CashRegister"
+      },
+      "description": "Sub-collection for cash register sessions."
+    },
+    "/tenants/{tenantId}/reports/{reportId}": {
+      "schema": {
+        "$ref": "#/entities/Report"
+      },
+      "description": "Sub-collection for generated reports."
+    },
     "/global/plans/{planId}": {
       "schema": {
         "$ref": "#/entities/Plan"
@@ -716,5 +767,3 @@
     }
   }
 }
-
-    

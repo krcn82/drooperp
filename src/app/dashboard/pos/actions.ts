@@ -46,7 +46,7 @@ export async function recordTransaction(tenantId: string, data: Omit<Transaction
 export async function processPayment(
   tenantId: string, 
   transactionId: string,
-  paymentData: { method: 'cash' | 'card' | 'stripe' | 'bankomat'; amount: number }
+  paymentData: { method: 'cash' | 'card' | 'stripe' | 'bankomat'; amount: number; cashRegisterId?: string | null }
 ) {
   if (!tenantId || !transactionId || !paymentData) {
     return { success: false, message: 'Missing required data.' };

@@ -6,6 +6,7 @@ import {cn} from '@/lib/utils';
 import {Toaster} from '@/components/ui/toaster';
 import {FirebaseClientProvider} from '@/firebase';
 import { AiStateProvider } from '@/hooks/use-ai-state';
+import { CashDrawerProvider } from '@/hooks/use-cash-drawer';
 
 const fontBody = Inter({
   subsets: ['latin'],
@@ -32,7 +33,9 @@ export default function RootLayout({
       <body className={cn('font-body antialiased', fontBody.variable, fontHeadline.variable)}>
         <FirebaseClientProvider>
           <AiStateProvider>
-            {children}
+            <CashDrawerProvider>
+              {children}
+            </CashDrawerProvider>
             <Toaster />
           </AiStateProvider>
         </FirebaseClientProvider>

@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ShoppingCart, X, Plus, Minus, Barcode, WifiOff, Camera, Search, Bot, Bell } from 'lucide-react';
+import { ShoppingCart, X, Plus, Minus, Barcode, WifiOff, Camera, Search, Bot, Bell, Landmark } from 'lucide-react';
 import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, where } from 'firebase/firestore';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
@@ -18,6 +18,8 @@ import { recordTransaction, confirmIntegrationOrder } from './actions';
 import { useAiState } from '@/hooks/use-ai-state';
 import { Badge } from '@/components/ui/badge';
 import PaymentDialog from '@/components/pos/PaymentDialog';
+import { useCashDrawer } from '@/hooks/use-cash-drawer';
+import CashDrawerDialog from '@/components/pos/CashDrawerDialog';
 
 type Product = {
   id: string;
@@ -67,6 +69,7 @@ export default function PosPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const scannerInitialized = useRef(false);
   const { setChatOpen, setPrefilledMessage } = useAiState();
+  const { isOpen: isCashDrawerOpen, openDrawerDialog } = useCashDrawer();
 
   useEffect(() => {
     setIsClient(true);
@@ -124,6 +127,10 @@ export default function PosPage() {
   const handleInitiatePayment = async () => {
     if (!user || !tenantId) {
       toast({ variant: 'destructive', title: 'Error', description: 'Cannot process payment. User or Tenant not identified.' });
+      return;
+    }
+     if (!isCashDrawerOpen) {
+      toast({ variant: 'destructive', title: 'Cash Drawer Closed', description: 'Please open the cash drawer to start a transaction.' });
       return;
     }
 
@@ -252,6 +259,7 @@ export default function PosPage() {
   if (!isClient) return null;
 
   return (
+    <>
     <div className="flex flex-col gap-4">
       {isOffline && (
         <Alert variant="destructive" className="bg-yellow-500 text-white border-yellow-500">
@@ -292,10 +300,16 @@ export default function PosPage() {
         <>
           <div className="flex justify-between items-center">
             <h1 className="text-3xl font-bold font-headline tracking-tight">Point of Sale</h1>
-             <Button onClick={startScanner}>
-              <Barcode className="mr-2 h-4 w-4" />
-              Scan Barcode
-            </Button>
+            <div className="flex items-center gap-2">
+                <Button variant="outline" onClick={openDrawerDialog}>
+                    <Landmark className="mr-2 h-4 w-4"/>
+                    <span className={isCashDrawerOpen ? 'text-green-500' : 'text-destructive'}>{isCashDrawerOpen ? 'Drawer Open' : 'Drawer Closed'}</span>
+                </Button>
+                <Button onClick={startScanner}>
+                    <Barcode className="mr-2 h-4 w-4" />
+                    Scan Barcode
+                </Button>
+            </div>
           </div>
           <Tabs defaultValue="shop">
             <TabsList className="grid w-full grid-cols-2 h-auto">
@@ -496,5 +510,7 @@ export default function PosPage() {
         </DialogContent>
       </Dialog>
     </div>
+    <CashDrawerDialog />
+    </>
   );
 }

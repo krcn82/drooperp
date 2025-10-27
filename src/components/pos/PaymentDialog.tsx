@@ -14,6 +14,7 @@ import { Loader2, Landmark, CreditCard, Wallet, MonitorSmartphone } from 'lucide
 import { cn } from '@/lib/utils';
 import { processPayment } from '@/app/dashboard/pos/actions';
 import { useToast } from '@/hooks/use-toast';
+import { useCashDrawer } from '@/hooks/use-cash-drawer';
 
 type PaymentMethod = 'cash' | 'card' | 'bankomat' | 'stripe';
 
@@ -45,82 +46,51 @@ export default function PaymentDialog({
   const [cashReceived, setCashReceived] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+  const { id: cashRegisterId } = useCashDrawer();
 
   const change = (parseFloat(cashReceived) || 0) - total;
 
-  const handleMethodSelect = (method: PaymentMethod) => {
+  const handleMethodSelect = async (method: PaymentMethod) => {
+    setIsLoading(true);
+    const paymentData = { method, amount: total, cashRegisterId };
+    const result = await processPayment(tenantId, transactionId, paymentData);
+    setIsLoading(false);
+
+    if (!result.success) {
+      toast({ variant: 'destructive', title: 'Payment Error', description: result.message });
+      return;
+    }
+
     switch (method) {
       case 'cash':
-        setView('cash');
-        setCashReceived(total.toFixed(2));
+        // For cash, the processPayment function already marks it as complete.
+        // We can just proceed to success.
+        toast({ title: 'Payment Successful', description: 'Cash payment recorded.' });
+        onPaymentSuccess(result.qrCode || 'cash-qr-placeholder');
+        resetState();
         break;
       case 'card':
       case 'bankomat':
         setView('terminal');
-        handleTerminalPayment(method);
+        toast({ title: 'Device Notified', description: 'Please complete payment on the terminal.' });
+        // The UI will now show a waiting state. The actual success is handled by a webhook
+        // that updates the payment status. The POS should listen for this change.
+        // For now, we simulate success after a delay for UI demonstration.
+        setTimeout(() => {
+           onPaymentSuccess('terminal-payment-placeholder-qr');
+           resetState();
+        }, 8000); // 8 second mock wait
         break;
       case 'stripe':
         setView('stripe');
-        handleStripePayment();
+        toast({ title: 'Stripe Initialized', description: 'Complete payment in the Stripe UI.' });
+        // In a real app, you would use result.clientSecret with Stripe.js here.
+        // We'll simulate success after a delay.
+        setTimeout(() => {
+          onPaymentSuccess('stripe-payment-successful-qr-placeholder');
+          resetState();
+        }, 5000);
         break;
-    }
-  };
-
-  const handleCashPayment = async () => {
-    if (change < 0) {
-      toast({ variant: 'destructive', title: 'Insufficient cash received.' });
-      return;
-    }
-    setIsLoading(true);
-    const result = await processPayment(tenantId, transactionId, { method: 'cash', amount: total });
-    if (result.success && result.qrCode) {
-      toast({ title: 'Payment Successful', description: `Change: $${change.toFixed(2)}` });
-      onPaymentSuccess(result.qrCode);
-      resetState();
-    } else {
-      toast({ variant: 'destructive', title: 'Payment Failed', description: result.message });
-    }
-    setIsLoading(false);
-  };
-  
-  const handleTerminalPayment = async (method: 'card' | 'bankomat') => {
-      setIsLoading(true);
-      
-      const result = await processPayment(tenantId, transactionId, { method: method, amount: total });
-      
-      if (result.success) {
-          toast({ title: 'Device Notified', description: 'Please complete the payment on the terminal.' });
-          // We don't call onPaymentSuccess here, as that will be triggered by the webhook.
-          // The modal will remain in a "waiting" state.
-          // For now, we'll simulate success for UI flow.
-           setTimeout(() => {
-              onPaymentSuccess('terminal-payment-placeholder-qr');
-              resetState();
-           }, 8000); // 8 second mock wait
-      } else {
-          toast({ variant: 'destructive', title: 'Device Communication Failed', description: result.message });
-          setIsLoading(false);
-          setView('select'); // Go back to selection
-      }
-  }
-
-  const handleStripePayment = async () => {
-    setIsLoading(true);
-    const result = await processPayment(tenantId, transactionId, { method: 'stripe', amount: total });
-    
-    if (result.success && result.clientSecret) {
-      toast({ title: 'Stripe Initialized', description: 'Complete payment in the Stripe UI.' });
-      console.log('Stripe Client Secret:', result.clientSecret);
-      // Here you would use Stripe.js to confirm the payment on the client
-      // For this example, we'll simulate a successful payment after a delay.
-      setTimeout(() => {
-        // The webhook would handle the DB update, but we simulate for UI feedback
-        onPaymentSuccess('stripe-payment-successful-qr-placeholder');
-        resetState();
-      }, 5000);
-    } else {
-      toast({ variant: 'destructive', title: 'Stripe Failed', description: result.message });
-      setIsLoading(false);
     }
   };
 
@@ -138,53 +108,16 @@ export default function PaymentDialog({
       onOpenChange(false);
     }
   };
-  
-  const handleCashInput = (value: string) => {
-    if (cashReceived.includes('.') && value === '.') return;
-    if (cashReceived.split('.')[1]?.length >= 2) return;
-    setCashReceived(cashReceived + value);
-  }
 
   const renderContent = () => {
     switch (view) {
-      case 'cash':
-        return (
-          <div>
-            <div className="text-center my-4">
-              <p className="text-muted-foreground">Amount Due</p>
-              <p className="text-4xl font-bold">${total.toFixed(2)}</p>
-            </div>
-            <div className="bg-muted p-4 rounded-lg text-center">
-              <p className="text-muted-foreground">Amount Received</p>
-              <p className="text-6xl font-bold font-mono tracking-tighter break-all">${cashReceived || '0.00'}</p>
-            </div>
-             <div className="grid grid-cols-3 gap-2 mt-4">
-                {['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0'].map(val => (
-                    <Button key={val} variant="outline" className="h-16 text-2xl" onClick={() => handleCashInput(val)}>{val}</Button>
-                ))}
-                <Button variant="outline" className="h-16 text-2xl" onClick={() => setCashReceived(cashReceived.slice(0, -1))}>⌫</Button>
-            </div>
-            <div className="mt-4 text-center">
-                <p className="text-muted-foreground">Change Due</p>
-                <p className={cn("text-3xl font-bold", change < 0 ? "text-destructive" : "text-green-600")}>
-                    ${change.toFixed(2)}
-                </p>
-            </div>
-            <DialogFooter className="mt-6">
-                <Button variant="ghost" onClick={() => setView('select')}>Back</Button>
-                <Button className="w-full" onClick={handleCashPayment} disabled={isLoading || change < 0}>
-                    {isLoading ? <Loader2 className="animate-spin" /> : 'Confirm Cash Payment'}
-                </Button>
-            </DialogFooter>
-          </div>
-        );
       case 'terminal':
         return (
             <div className="text-center py-12">
                 <Loader2 className="h-16 w-16 mx-auto animate-spin text-primary" />
                 <p className="mt-4 text-lg font-semibold">Waiting for terminal response...</p>
                 <p className="text-muted-foreground">Please complete the transaction on the device.</p>
-                <Button variant="ghost" className="mt-4" onClick={() => setView('select')}>Cancel</Button>
+                <Button variant="ghost" className="mt-4" onClick={() => { setView('select'); setIsLoading(false); }}>Cancel</Button>
             </div>
         );
       case 'stripe':
@@ -194,7 +127,7 @@ export default function PaymentDialog({
                 <p className="mt-4 text-lg font-semibold">Connecting to Stripe...</p>
                 <p className="text-muted-foreground">Please wait while we initialize the payment.</p>
                 <DialogFooter className="mt-6">
-                    <Button variant="ghost" onClick={() => setView('select')} disabled={isLoading}>Back</Button>
+                    <Button variant="ghost" onClick={() => { setView('select'); setIsLoading(false); }} disabled={isLoading}>Back</Button>
                 </DialogFooter>
             </div>
         );
@@ -208,8 +141,9 @@ export default function PaymentDialog({
                 variant="outline"
                 className="h-28 flex flex-col gap-2 text-lg"
                 onClick={() => handleMethodSelect(method.id)}
+                disabled={isLoading}
               >
-                <span className="text-4xl">{method.emoji}</span>
+                {isLoading ? <Loader2 className="animate-spin" /> : <span className="text-4xl">{method.emoji}</span>}
                 {method.name}
               </Button>
             ))}
@@ -230,5 +164,3 @@ export default function PaymentDialog({
     </Dialog>
   );
 }
-
-    
