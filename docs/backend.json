@@ -458,6 +458,37 @@
         }
       },
       "required": ["platform", "receivedAt", "payloadHash", "status"]
+    },
+    "Notification": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Notification",
+      "type": "object",
+      "description": "Represents a notification for a user within a tenant.",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "The title of the notification."
+        },
+        "message": {
+          "type": "string",
+          "description": "The main content of the notification."
+        },
+        "type": {
+          "type": "string",
+          "enum": ["info", "alert", "success", "insight"],
+          "description": "The type of notification, which can be used for styling."
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the notification was created."
+        },
+        "read": {
+          "type": "boolean",
+          "description": "Whether the notification has been read by the user."
+        }
+      },
+      "required": ["title", "message", "type", "timestamp", "read"]
     }
   },
   "auth": {
@@ -543,8 +574,12 @@
             "$ref": "#/entities/AuditLog"
         },
         "description": "Sub-collection for logging incoming webhook API calls."
+    },
+    "/tenants/{tenantId}/notifications/{notificationId}": {
+      "schema": {
+        "$ref": "#/entities/Notification"
+      },
+      "description": "Sub-collection for user and system notifications within a tenant."
     }
   }
 }
-
-    

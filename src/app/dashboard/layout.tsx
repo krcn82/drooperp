@@ -16,6 +16,7 @@ import {
   Calendar,
   Contact,
   Utensils,
+  Bell,
 } from 'lucide-react';
 import {usePathname, useRouter} from 'next/navigation';
 import {Button} from '@/components/ui/button';
@@ -24,12 +25,14 @@ import {Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetTri
 import {cn} from '@/lib/utils';
 import {UserNav} from '@/components/common/user-nav';
 import {Database} from 'lucide-react';
-import {useAuth, useUser, useFirestore, useDoc, useMemoFirebase} from '@/firebase';
+import {useAuth, useUser, useFirestore, useDoc, useMemoFirebase, useCollection} from '@/firebase';
 import {useEffect, useState, useMemo} from 'react';
 import {signOut} from 'firebase/auth';
 import ChatWidget from '@/components/ai/ChatWidget';
 import {useAiState} from '@/hooks/use-ai-state';
-import { doc } from 'firebase/firestore';
+import { doc, collection, query, where } from 'firebase/firestore';
+import NotificationCenter from '@/components/common/NotificationCenter';
+import { Badge } from '@/components/ui/badge';
 
 const allNavItems = [
   {id: 'dashboard', href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard'},
@@ -52,6 +55,10 @@ type ModuleSettings = {
   aiAssistant: boolean;
 };
 
+type Notification = {
+  read: boolean;
+}
+
 export default function DashboardLayout({children}: {children: React.ReactNode}) {
   const pathname = usePathname();
   const auth = useAuth();
@@ -60,6 +67,7 @@ export default function DashboardLayout({children}: {children: React.ReactNode})
   const router = useRouter();
   const {setChatOpen} = useAiState();
   const [tenantId, setTenantId] = useState<string | null>(null);
+  const [isNotificationsOpen, setNotificationsOpen] = useState(false);
 
   useEffect(() => {
       const storedTenantId = localStorage.getItem('tenantId');
@@ -80,6 +88,14 @@ export default function DashboardLayout({children}: {children: React.ReactNode})
   }, [firestore, tenantId, isUserLoading, user]);
 
   const { data: moduleSettings, isLoading: areModulesLoading } = useDoc<ModuleSettings>(moduleSettingsRef);
+  
+  const notificationsQuery = useMemoFirebase(() => {
+    if (!firestore || !tenantId) return null;
+    return query(collection(firestore, `tenants/${tenantId}/notifications`), where('read', '==', false));
+  }, [firestore, tenantId]);
+
+  const { data: unreadNotifications } = useCollection<Notification>(notificationsQuery);
+  const unreadCount = unreadNotifications?.length || 0;
   
   const navItems = useMemo(() => {
     if (areModulesLoading || !moduleSettings) return allNavItems.filter(item => ['dashboard', 'reports', 'assets', 'datev-export', 'gdpr', 'settings'].includes(item.id)); // show core items while loading
@@ -202,6 +218,13 @@ export default function DashboardLayout({children}: {children: React.ReactNode})
               </div>
             </form>
           </div>
+           <Button variant="ghost" size="icon" onClick={() => setNotificationsOpen(true)} className="relative">
+                <Bell className="h-5 w-5" />
+                {unreadCount > 0 && (
+                    <Badge variant="destructive" className="absolute -top-1 -right-1 h-5 w-5 justify-center p-0">{unreadCount}</Badge>
+                )}
+                <span className="sr-only">Open Notifications</span>
+            </Button>
            {moduleSettings?.aiAssistant && (
              <Button variant="ghost" size="icon" onClick={() => setChatOpen(true)}>
                <Bot className="h-5 w-5" />
@@ -213,6 +236,7 @@ export default function DashboardLayout({children}: {children: React.ReactNode})
         <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6 bg-background">
           {children}
           {moduleSettings?.aiAssistant && <ChatWidget />}
+          <NotificationCenter open={isNotificationsOpen} onOpenChange={setNotificationsOpen} />
         </main>
       </div>
     </div>
