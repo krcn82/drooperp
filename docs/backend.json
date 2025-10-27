@@ -498,6 +498,28 @@
         }
       },
       "required": ["title", "message", "type", "timestamp", "read"]
+    },
+    "Mail": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Mail",
+      "type": "object",
+      "description": "Represents an email to be sent by an extension.",
+      "properties": {
+        "to": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Array of recipient email addresses."
+        },
+        "message": {
+          "type": "object",
+          "properties": {
+            "subject": { "type": "string" },
+            "html": { "type": "string" }
+          },
+          "required": ["subject", "html"]
+        }
+      },
+      "required": ["to", "message"]
     }
   },
   "auth": {
@@ -589,6 +611,13 @@
         "$ref": "#/entities/Notification"
       },
       "description": "Sub-collection for user and system notifications within a tenant."
+    },
+    "/mail/{mailId}": {
+      "schema": {
+        "$ref": "#/entities/Mail"
+      },
+      "description": "Collection for triggering email sending via Firebase Extensions (e.g., SendGrid, Mailgun)."
     }
   }
 }
+    

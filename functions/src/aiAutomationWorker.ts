@@ -52,6 +52,7 @@ async function analyzeTenantData(firestore: admin.firestore.Firestore, tenantId:
     if (salesInsight) {
       // 2. Send Smart Notification
       await firestore.collection(`tenants/${tenantId}/notifications`).add({
+        title: 'Daily Sales Insight',
         type: 'insight',
         message: salesInsight,
         timestamp: Timestamp.now(),
@@ -135,3 +136,5 @@ async function analyzeSales(firestore: admin.firestore.Firestore, tenantId: stri
         return `Heads up: Sales have dropped ${Math.abs(percentageChange).toFixed(0)}% this week compared to last week, with a total of €${lastWeekRevenue.toFixed(2)}.`;
     }
 }
+
+    

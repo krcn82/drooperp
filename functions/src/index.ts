@@ -17,3 +17,6 @@ export * from './webhooks';
 export * from './syncIntegrationOrders';
 export * from './syncMenu';
 export * from './automationWorker';
+export * from './sendNotificationAlert';
+
+    

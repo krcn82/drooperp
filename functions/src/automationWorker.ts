@@ -128,7 +128,6 @@ async function checkBestSellerSpike(firestore: admin.firestore.Firestore, tenant
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const yesterdayStart = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000);
-    const dayBeforeYesterdayStart = new Date(yesterdayStart.getTime() - 24 * 60 * 60 * 1000);
 
     const todaySales = await getProductSales(firestore, tenantId, todayStart, now);
     const yesterdaySales = await getProductSales(firestore, tenantId, yesterdayStart, todayStart);
@@ -184,3 +183,5 @@ async function checkLowStock(firestore: admin.firestore.Firestore, tenantId: str
         );
     }
 }
+
+    
