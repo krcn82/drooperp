@@ -1,0 +1,72 @@
+"use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.syncOfflineTransactions = void 0;
+const functions = __importStar(require("firebase-functions"));
+const admin = __importStar(require("firebase-admin"));
+/**
+ * Syncs an array of offline transactions to Firestore.
+ */
+exports.syncOfflineTransactions = functions.https.onCall(async (data, context) => {
+    const { tenantId, transactionsArray } = data;
+    const uid = context.auth?.uid;
+    if (!uid) {
+        throw new functions.https.HttpsError('unauthenticated', 'The function must be called while authenticated.');
+    }
+    if (!tenantId || !Array.isArray(transactionsArray) || transactionsArray.length === 0) {
+        throw new functions.https.HttpsError('invalid-argument', 'Missing or invalid data: tenantId or transactionsArray.');
+    }
+    const firestore = admin.firestore();
+    const batch = firestore.batch();
+    const transactionsCollection = firestore.collection(`tenants/${tenantId}/transactions`);
+    transactionsArray.forEach(transaction => {
+        const docRef = transactionsCollection.doc(); // Auto-generate ID
+        batch.set(docRef, {
+            ...transaction,
+            cashierUserId: uid,
+            timestamp: admin.firestore.FieldValue.serverTimestamp(),
+            synced: true, // Mark as synced
+        });
+    });
+    try {
+        await batch.commit();
+        return { success: true, message: `${transactionsArray.length} transactions synced successfully.` };
+    }
+    catch (error) {
+        console.error('Error syncing offline transactions:', error);
+        throw new functions.https.HttpsError('internal', 'An error occurred while syncing transactions.', error);
+    }
+});
+//# sourceMappingURL=syncOfflineTransactions.js.map
