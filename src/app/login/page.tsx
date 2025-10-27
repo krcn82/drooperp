@@ -19,7 +19,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 
 const formSchema = z.object({
-  tenantId: z.string().min(1, 'Tenant ID is required'),
+  tenantId: z.string().trim().min(1, 'Tenant ID is required'),
   email: z.string().email('Invalid email address'),
   password: z.string().min(1, 'Password is required'),
 });
