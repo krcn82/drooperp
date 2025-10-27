@@ -60,7 +60,7 @@ export default function SettingsPage() {
                             <span className="truncate">{item.label}</span>
                          </Button>
                     ))}
-                    <Link href="/dashboard/gdpr" asChild>
+                    <Link href="/dashboard/gdpr">
                         <Button
                             variant="ghost"
                             className={cn('w-full justify-start text-base md:text-sm')}
