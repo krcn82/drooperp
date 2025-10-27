@@ -8,7 +8,6 @@ type TransactionData = {
   items: { name: string; qty: number; price: number; productId: string }[];
   cashierUserId: string;
   amountTotal: number;
-  paymentMethod: 'cash' | 'card' | 'stripe' | 'bankomat';
   type: 'shop' | 'restaurant';
 };
 
@@ -54,33 +53,57 @@ export async function processPayment(
     return { success: false, message: 'Missing required data.' };
   }
 
-  const { firestore } = initializeFirebase();
+  const { firebaseApp, firestore } = initializeFirebase();
   
   try {
     const paymentRef = doc(collection(firestore, `tenants/${tenantId}/payments`));
     const transactionRef = doc(firestore, `tenants/${tenantId}/transactions`, transactionId);
 
-    // 1. Create payment record
+    // 1. Create payment record with 'pending' status
     await addDocumentNonBlocking(paymentRef, {
       ...paymentData,
       transactionId,
       tenantId,
       timestamp: serverTimestamp(),
-      status: 'completed'
+      status: 'pending' // Initially pending for all types
     });
 
-    // 2. Update transaction status
+    // 2. Update transaction with payment details
     await updateDocumentNonBlocking(transactionRef, {
-      status: 'paid',
       paymentMethod: paymentData.method,
       paymentId: paymentRef.id,
     });
     
-    // In a real app, you would now call the RKSV signing function
-    // For now, we will just return a success state.
-    // const rksvResult = await signTransaction(tenantId, transactionId);
+    // 3. Handle different payment methods
+    if (paymentData.method === 'stripe') {
+        const functions = getFunctions(firebaseApp);
+        const processStripePayment = httpsCallable(functions, 'processStripePayment');
+        const result: any = await processStripePayment({ 
+            tenantId,
+            transactionId,
+            paymentId: paymentRef.id, // Pass paymentId to be stored in metadata
+            amount: paymentData.amount,
+            currency: 'eur' // Or get from config
+        });
+        
+        // Return client secret to the frontend
+        return { success: true, clientSecret: result.data.clientSecret, paymentId: paymentRef.id };
 
-    return { success: true, paymentId: paymentRef.id, qrCode: 'sample-qr-code-data' };
+    } else if (paymentData.method === 'cash') {
+        // For cash, we can immediately mark it as completed.
+        await updateDocumentNonBlocking(paymentRef, { status: 'completed' });
+        await updateDocumentNonBlocking(transactionRef, { status: 'paid' });
+        // TODO: Call RKSV signing for cash payment
+        return { success: true, paymentId: paymentRef.id, qrCode: 'sample-qr-code-data' };
+        
+    } else { // Card or Bankomat
+        // For terminal payments, we'd wait for a webhook or confirmation.
+        // For now, we'll simulate success and mark as completed.
+        await updateDocumentNonBlocking(paymentRef, { status: 'completed' });
+        await updateDocumentNonBlocking(transactionRef, { status: 'paid' });
+        // TODO: Call RKSV signing for terminal payments
+        return { success: true, paymentId: paymentRef.id, qrCode: 'sample-qr-code-data-terminal' };
+    }
     
   } catch (error: any) {
     console.error('Failed to process payment:', error);

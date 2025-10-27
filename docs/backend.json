@@ -583,6 +583,19 @@
         }
       },
       "required": ["id", "tenantId", "transactionId", "method", "amount", "timestamp", "status"]
+    },
+    "StripePaymentIntent": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Stripe Payment Intent",
+      "type": "object",
+      "description": "Response from creating a Stripe Payment Intent.",
+      "properties": {
+        "clientSecret": {
+          "type": "string",
+          "description": "The client secret for the Stripe Payment Intent."
+        }
+      },
+      "required": ["clientSecret"]
     }
   },
   "auth": {

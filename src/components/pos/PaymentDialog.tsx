@@ -61,7 +61,7 @@ export default function PaymentDialog({
         break;
       case 'stripe':
         setView('stripe');
-        // Stripe payment logic would be initiated here
+        handleStripePayment();
         break;
     }
   };
@@ -86,7 +86,7 @@ export default function PaymentDialog({
   const handleTerminalPayment = async (method: 'card' | 'bankomat') => {
       setIsLoading(true);
       // Simulate waiting for terminal
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
       const result = await processPayment(tenantId, transactionId, { method: method, amount: total });
       
@@ -99,6 +99,27 @@ export default function PaymentDialog({
       }
       setIsLoading(false);
   }
+
+  const handleStripePayment = async () => {
+    setIsLoading(true);
+    const result = await processPayment(tenantId, transactionId, { method: 'stripe', amount: total });
+    
+    if (result.success && result.clientSecret) {
+      toast({ title: 'Stripe Initialized', description: 'Complete payment in the Stripe UI.' });
+      console.log('Stripe Client Secret:', result.clientSecret);
+      // Here you would use Stripe.js to confirm the payment on the client
+      // For this example, we'll simulate a successful payment after a delay.
+      setTimeout(() => {
+        // The webhook would handle the DB update, but we simulate for UI feedback
+        onPaymentSuccess('stripe-payment-successful-qr-placeholder');
+        resetState();
+      }, 5000);
+    } else {
+      toast({ variant: 'destructive', title: 'Stripe Failed', description: result.message });
+      setIsLoading(false);
+    }
+    // isLoading stays true until the simulated payment is "complete"
+  };
 
   const resetState = () => {
     setView('select');
@@ -163,11 +184,11 @@ export default function PaymentDialog({
       case 'stripe':
         return (
             <div className="text-center py-12">
-                <div className="w-full h-64 bg-muted rounded-lg flex items-center justify-center">
-                    <p className="text-muted-foreground">(Stripe Payment iframe would be here)</p>
-                </div>
-                 <DialogFooter className="mt-6">
-                    <Button variant="ghost" onClick={() => setView('select')}>Back</Button>
+                 <Loader2 className="h-16 w-16 mx-auto animate-spin text-primary" />
+                <p className="mt-4 text-lg font-semibold">Connecting to Stripe...</p>
+                <p className="text-muted-foreground">Please wait while we initialize the payment.</p>
+                <DialogFooter className="mt-6">
+                    <Button variant="ghost" onClick={() => setView('select')} disabled={isLoading}>Back</Button>
                 </DialogFooter>
             </div>
         );
