@@ -6,6 +6,18 @@ const cors = require('cors');
 const { startPaymentOnDevice } = require('./lib/bankomatDriver');
 const { createLogger, format, transports } = require('winston');
 const path = require('path');
+const admin = require('firebase-admin');
+
+// --- Firebase Admin SDK Setup ---
+// Initialize Firebase Admin. It will automatically use the service account credentials
+// specified by the GOOGLE_APPLICATION_CREDENTIALS environment variable.
+try {
+    admin.initializeApp();
+    console.log("Firebase Admin SDK initialized successfully.");
+} catch (error) {
+    console.error("Firebase Admin SDK initialization error:", error);
+    process.exit(1);
+}
 
 const app = express();
 const port = process.env.SERVER_PORT || 7070;
@@ -38,13 +50,37 @@ const logger = createLogger({
 app.use(bodyParser.json());
 app.use(cors()); // In a real production environment, restrict this to the ERP's domain
 
+// --- Authentication Middleware ---
+// This middleware will protect all routes defined after it.
+const authMiddleware = async (req, res, next) => {
+    const token = req.headers.authorization?.split("Bearer ")[1];
+    if (!token) {
+        logger.warn('Unauthorized access attempt: No token provided.');
+        return res.status(401).json({ error: "Unauthorized: No token provided." });
+    }
+
+    try {
+        // Verify the ID token using the Firebase Admin SDK.
+        const decodedToken = await admin.auth().verifyIdToken(token);
+        req.user = decodedToken; // Optionally attach user info to the request
+        logger.info(`Authenticated request for UID: ${decodedToken.uid}`);
+        next(); // Token is valid, proceed to the next handler
+    } catch (error) {
+        logger.error('Authentication error: Invalid token.', { errorMessage: error.message });
+        return res.status(401).json({ error: "Unauthorized: Invalid token." });
+    }
+};
+
 // --- Routes ---
 
-// Health check endpoint
+// Health check endpoint (publicly accessible, defined before auth middleware)
 app.get('/api/health', (req, res) => {
   logger.info('Health check endpoint hit');
   res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+// Apply authentication middleware to all subsequent API routes
+app.use('/api', authMiddleware);
 
 /**
  * Endpoint to start a payment on the physical device.
