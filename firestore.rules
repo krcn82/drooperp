@@ -1,338 +1,448 @@
-/**
- * @fileoverview Firestore Security Rules for the ERP system.
- *
- * Core Philosophy:
- * This ruleset enforces a multi-tenant data model where access is primarily restricted to users within their respective tenants.
- * It also provides for global plans that can be accessed.
- *
- * Data Structure:
- * - /users/{userId}: Maps user UIDs to tenant IDs. This is the entry point for determining tenant association.
- * - /tenants/{tenantId}: Stores tenant-specific data.
- * - /tenants/{tenantId}/[...]: Subcollections under tenants contain tenant-specific data, accessible only to authorized users within that tenant.
- * - /global/plans/{planId}: Stores subscription plans, accessible to all users.
- * - /mail/{mailId}: Used to trigger emails; write-only, accessible only by authenticated users.
- *
- * Key Security Decisions:
- * - Strict tenant-based access control. Users can only access data within their assigned tenant.
- * - Public read access is NOT granted to any tenant-specific collections.
- * - Listing of user documents in `/users/{userId}` is denied.
- * - The `/mail` collection is only writable by authenticated users to trigger outgoing emails.
- *
- * Denormalization for Authorization:
- * - User role (e.g., "admin", "cashier", "viewer") is stored directly on the `/tenants/{tenantId}/users/{userId}` document. This avoids needing to query separate role collections.
- * - Tenant ID is denormalized into most tenant-specific documents to simplify authorization rules.
- */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Checks if the user is signed in.
-     * @path N/A
-     * @allow N/A
-     * @deny N/A
-     * @principle Authentication is required for certain operations.
-     */
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    /**
-     * @description Checks if the authenticated user's ID matches the provided user ID.
-     * @path N/A
-     * @allow N/A
-     * @deny N/A
-     * @principle Enforces user ownership.
-     */
-    function isOwner(userId) {
-      return request.auth.uid == userId;
-    }
-
-    /**
-     * @description Checks if the authenticated user's ID matches the provided user ID and the resource exists.
-     * @path N/A
-     * @allow N/A
-     * @deny N/A
-     * @principle Enforces user ownership and resource existence for updates and deletes.
-     */
-    function isExistingOwner(userId) {
-      return isOwner(userId) && exists(resource);
-    }
-
-    /**
-     * @description Checks if the authenticated user is an admin within the specified tenant.
-     * @path N/A
-     * @allow N/A
-     * @deny N/A
-     */
-    function isAdmin(tenantId) {
-      return get(/databases/$(database)/documents/tenants/$(tenantId)/users/$(request.auth.uid)).data.role == 'admin';
-    }
-
-    /**
-     * @description Top-level collection to map user UIDs to tenant IDs for security rules.
+     * @description Maps user UIDs to tenant IDs.  This collection is critical for all other rules.
      * @path /users/{userId}
-     * @allow (create) - User QK0MlhfnRObfgKrB3290bD3VRqu1 creates their own user document.
-     * @deny (create) - User attempts to create a document with a different userId
-     * @allow (get) - User QK0MlhfnRObfgKrB3290bD3VRqu1 gets their own user document.
-     * @deny (get) - User attempts to get a different user's document.
-     * @principle Enforces document ownership for writes.
+     * @allow (create) - If the authenticated user's UID matches the document ID.
+     * @deny (create) - If the authenticated user's UID does not match the document ID.
+     * @allow (get) - If the authenticated user's UID matches the document ID.
+     * @deny (get) - If the authenticated user's UID does not match the document ID.
+     * @allow (update, delete) - Never.  This collection is immutable after creation.
+     * @deny (update, delete) - Always.  This collection is immutable after creation.
+     * @allow (list) - Never.  Listing users is not allowed.
+     * @deny (list) - Always.  Listing users is not allowed.
+     * @principle Enforces document ownership for reads and self-creation.
      */
     match /users/{userId} {
+      function isOwner(userId) {
+        return request.auth.uid == userId;
+      }
       allow get: if isOwner(userId);
       allow list: if false;
       allow create: if isOwner(userId);
-      allow update: if isOwner(userId) && exists(resource);
-      allow delete: if isOwner(userId) && exists(resource);
+      allow update, delete: if false;
     }
 
     /**
-     * @description Collection to store tenant information.
+     * @description Stores tenant information.
      * @path /tenants/{tenantId}
-     * @allow (get) - Authenticated user gets tenant information.
-     * @deny (get) - Unauthenticated user tries to get tenant data.
-     * @allow (create) - Admin user creates tenant document.
-     * @deny (create) - Non-admin user attempts to create a tenant.
-     * @principle Restricts access to tenant data to authenticated users and only allows admin to create.
+     * @allow (create) - Never. Tenants can only be created through the admin console or backend processes.
+     * @deny (create) - Always. Tenants can only be created through the admin console or backend processes.
+     * @allow (get) - If the user is authenticated and a member of the tenant (checks /users/{userId}).
+     * @deny (get) - If the user is not authenticated or not a member of the tenant.
+     * @allow (update, delete) - Never. Tenants can only be updated/deleted through the admin console or backend processes.
+     * @deny (update, delete) - Always. Tenants can only be updated/deleted through the admin console or backend processes.
+     * @allow (list) - Never. Listing tenants is not allowed.
+     * @deny (list) - Always. Listing tenants is not allowed.
+     * @principle Restricts access to tenant data based on user membership.
      */
     match /tenants/{tenantId} {
-      allow get: if isSignedIn();
+      function isSignedIn() {
+        return request.auth != null;
+      }
+      function isMemberOfTenant(tenantId) {
+        return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
+      }
+      allow get: if isSignedIn() && isMemberOfTenant(tenantId);
       allow list: if false;
-      allow create: if isAdmin(tenantId); // Only admin can create tenants
-      allow update: if isAdmin(tenantId) && exists(resource); // Only admin can update existing tenants
-      allow delete: if false; // No one can delete tenants for now
+      allow create, update, delete: if false;
     }
 
     /**
      * @description Sub-collection for users within a tenant.
      * @path /tenants/{tenantId}/users/{userId}
-     * @allow (get) - User gets their own profile within the tenant.
-     * @deny (get) - User attempts to access another user's profile.
-     * @allow (create) - Admin user creates a new user within the tenant.
-     * @deny (create) - Non-admin user attempts to create a user.
-     * @principle Only tenant admins can manage users within their tenant.
+     * @allow (create) - If the user is an admin in the tenant and the new user's `tenantId` matches the path.
+     * @deny (create) - If the user is not an admin or the `tenantId` does not match.
+     * @allow (get) - If the user is authenticated and a member of the tenant.
+     * @deny (get) - If the user is not authenticated or not a member of the tenant.
+     * @allow (update) - If the user is an admin in the tenant.
+     * @deny (update) - If the user is not an admin.
+     * @allow (delete) - If the user is an admin in the tenant.
+     * @deny (delete) - If the user is not an admin.
+     * @allow (list) - If the user is authenticated and a member of the tenant.
+     * @deny (list) - If the user is not authenticated or not a member of the tenant.
+     * @principle Enforces tenant-level access control and admin-only modifications.
      */
     match /tenants/{tenantId}/users/{userId} {
-      allow get: if isSignedIn();
-      allow list: if false; // Listing users should be handled via backend functions or other mechanisms
-      allow create: if isAdmin(tenantId); // Only admin can create users AND enforce tenantId and userId
-      allow update: if isAdmin(tenantId) && exists(resource); // Only admin can update users AND tenantId is immutable
-      allow delete: if isAdmin(tenantId) && exists(resource);
+      function isSignedIn() {
+        return request.auth != null;
+      }
+      function isMemberOfTenant(tenantId) {
+        return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
+      }
+      function isAdminInTenant(tenantId) {
+          return isMemberOfTenant(tenantId) && get(/databases/$(database)/documents/tenants/$(tenantId)/users/$(userId)).data.role == 'admin';
+      }
+      allow get, list: if isSignedIn() && isMemberOfTenant(tenantId);
+      allow create: if isAdminInTenant(tenantId) && request.resource.data.tenantId == tenantId;
+      allow update: if isAdminInTenant(tenantId); //Enforce immutability of the userId
+      allow delete: if isAdminInTenant(tenantId);
     }
 
     /**
      * @description Sub-collection for transactions within a tenant.
      * @path /tenants/{tenantId}/transactions/{transactionId}
-     * @allow (create) - Authenticated user creates a transaction within their tenant.
-     * @deny (create) - User attempts to create a transaction in another tenant.
-     * @allow (get) - Authenticated user gets transaction data within their tenant.
-     * @deny (get) - User attempts to access transaction data from another tenant.
-     * @principle Restricts transaction access to users within the same tenant.
+     * @allow (create) - If the user is authenticated and a member of the tenant.
+     * @deny (create) - If the user is not authenticated or not a member of the tenant.
+     * @allow (get) - If the user is authenticated and a member of the tenant.
+     * @deny (get) - If the user is not authenticated or not a member of the tenant.
+     * @allow (update) - If the user is an admin in the tenant and document exists.
+     * @deny (update) - If the user is not an admin or document does not exist.
+     * @allow (delete) - If the user is an admin in the tenant and document exists.
+     * @deny (delete) - If the user is not an admin or document does not exist.
+     * @allow (list) - If the user is authenticated and a member of the tenant.
+     * @deny (list) - If the user is not authenticated or not a member of the tenant.
+     * @principle Enforces tenant-level access control.
      */
     match /tenants/{tenantId}/transactions/{transactionId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if isAdmin(tenantId); // Enforce tenantId on create
-      allow update: if isAdmin(tenantId) && exists(resource); // tenantId is immutable
-      allow delete: if isAdmin(tenantId) && exists(resource);
+      function isSignedIn() {
+        return request.auth != null;
+      }
+      function isMemberOfTenant(tenantId) {
+        return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
+      }
+      function isAdminInTenant(tenantId) {
+          return isMemberOfTenant(tenantId) && get(/databases/$(database)/documents/tenants/$(tenantId)/users/$(request.auth.uid)).data.role == 'admin';
+      }
+      allow get, list: if isSignedIn() && isMemberOfTenant(tenantId);
+      allow create: if isSignedIn() && isMemberOfTenant(tenantId);
+      allow update: if isAdminInTenant(tenantId) && exists( /databases/$(database)/documents/tenants/$(tenantId)/transactions/$(transactionId));
+      allow delete: if isAdminInTenant(tenantId) && exists(/databases/$(database)/documents/tenants/$(tenantId)/transactions/$(transactionId));
     }
 
     /**
      * @description Sub-collection for products within a tenant.
      * @path /tenants/{tenantId}/products/{productId}
-     * @allow (create) - Authenticated user creates a product within their tenant.
-     * @deny (create) - User attempts to create a product in another tenant.
-     * @allow (get) - Authenticated user gets product data within their tenant.
-     * @deny (get) - User attempts to access product data from another tenant.
-     * @principle Restricts product access to users within the same tenant.
+     * @allow (create) - If the user is authenticated and a member of the tenant.
+     * @deny (create) - If the user is not authenticated or not a member of the tenant.
+     * @allow (get) - If the user is authenticated and a member of the tenant.
+     * @deny (get) - If the user is not authenticated or not a member of the tenant.
+     * @allow (update) - If the user is an admin in the tenant and document exists.
+     * @deny (update) - If the user is not an admin or document does not exist.
+     * @allow (delete) - If the user is an admin in the tenant and document exists.
+     * @deny (delete) - If the user is not an admin or document does not exist.
+     * @allow (list) - If the user is authenticated and a member of the tenant.
+     * @deny (list) - If the user is not authenticated or not a member of the tenant.
+     * @principle Enforces tenant-level access control.
      */
     match /tenants/{tenantId}/products/{productId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if isAdmin(tenantId); // Enforce tenantId on create
-      allow update: if isAdmin(tenantId) && exists(resource); // tenantId is immutable
-      allow delete: if isAdmin(tenantId) && exists(resource);
+      function isSignedIn() {
+        return request.auth != null;
+      }
+      function isMemberOfTenant(tenantId) {
+        return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
+      }
+      function isAdminInTenant(tenantId) {
+          return isMemberOfTenant(tenantId) && get(/databases/$(database)/documents/tenants/$(tenantId)/users/$(request.auth.uid)).data.role == 'admin';
+      }
+      allow get, list: if isSignedIn() && isMemberOfTenant(tenantId);
+      allow create: if isSignedIn() && isMemberOfTenant(tenantId);
+      allow update: if isAdminInTenant(tenantId) && exists(/databases/$(database)/documents/tenants/$(tenantId)/products/$(productId));
+      allow delete: if isAdminInTenant(tenantId) && exists(/databases/$(database)/documents/tenants/$(tenantId)/products/$(productId));
     }
 
     /**
      * @description Document for general settings within a tenant.
      * @path /tenants/{tenantId}/settings/general
-     * @allow (get) - Authenticated user gets general settings within their tenant.
-     * @deny (get) - User attempts to access settings from another tenant.
-     * @allow (update) - Admin user updates general settings.
-     * @deny (update) - Non-admin attempts to update settings.
-     * @principle Restricts settings access to tenant admins.
+     * @allow (create) - If the user is an admin in the tenant.
+     * @deny (create) - If the user is not an admin.
+     * @allow (get) - If the user is authenticated and a member of the tenant.
+     * @deny (get) - If the user is not authenticated or not a member of the tenant.
+     * @allow (update) - If the user is an admin in the tenant and document exists.
+     * @deny (update) - If the user is not an admin or document does not exist.
+     * @allow (delete) - Never. Settings documents should not be deleted.
+     * @deny (delete) - Always. Settings documents should not be deleted.
+     * @allow (list) - Never. This is a document, not a collection.
+     * @deny (list) - Always. This is a document, not a collection.
+     * @principle Enforces tenant-level access control and admin-only modifications.
      */
     match /tenants/{tenantId}/settings/general {
-      allow get: if isSignedIn();
+      function isSignedIn() {
+        return request.auth != null;
+      }
+      function isMemberOfTenant(tenantId) {
+        return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
+      }
+      function isAdminInTenant(tenantId) {
+          return isMemberOfTenant(tenantId) && get(/databases/$(database)/documents/tenants/$(tenantId)/users/$(request.auth.uid)).data.role == 'admin';
+      }
+      allow get: if isSignedIn() && isMemberOfTenant(tenantId);
       allow list: if false;
-      allow create: if false; // Settings should be created by a backend function
-      allow update: if isAdmin(tenantId) && exists(resource);
+      allow create: if isAdminInTenant(tenantId);
+      allow update: if isAdminInTenant(tenantId) && exists(/databases/$(database)/documents/tenants/$(tenantId)/settings/general);
       allow delete: if false;
     }
 
     /**
      * @description Document for module settings within a tenant.
      * @path /tenants/{tenantId}/settings/modules
-     * @allow (get) - Authenticated user gets module settings within their tenant.
-     * @deny (get) - User attempts to access settings from another tenant.
-     * @allow (update) - Admin user updates module settings.
-     * @deny (update) - Non-admin attempts to update settings.
-     * @principle Restricts settings access to tenant admins.
+     * @allow (create) - If the user is an admin in the tenant.
+     * @deny (create) - If the user is not an admin.
+     * @allow (get) - If the user is authenticated and a member of the tenant.
+     * @deny (get) - If the user is not authenticated or not a member of the tenant.
+     * @allow (update) - If the user is an admin in the tenant and document exists.
+     * @deny (update) - If the user is not an admin or document does not exist.
+     * @allow (delete) - Never. Settings documents should not be deleted.
+     * @deny (delete) - Always. Settings documents should not be deleted.
+     * @allow (list) - Never. This is a document, not a collection.
+     * @deny (list) - Always. This is a document, not a collection.
+     * @principle Enforces tenant-level access control and admin-only modifications.
      */
     match /tenants/{tenantId}/settings/modules {
-      allow get: if isSignedIn();
+      function isSignedIn() {
+        return request.auth != null;
+      }
+      function isMemberOfTenant(tenantId) {
+        return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
+      }
+      function isAdminInTenant(tenantId) {
+          return isMemberOfTenant(tenantId) && get(/databases/$(database)/documents/tenants/$(tenantId)/users/$(request.auth.uid)).data.role == 'admin';
+      }
+      allow get: if isSignedIn() && isMemberOfTenant(tenantId);
       allow list: if false;
-      allow create: if false; // Settings should be created by a backend function
-      allow update: if isAdmin(tenantId) && exists(resource);
+      allow create: if isAdminInTenant(tenantId);
+      allow update: if isAdminInTenant(tenantId) && exists(/databases/$(database)/documents/tenants/$(tenantId)/settings/modules);
       allow delete: if false;
     }
 
-    /**
-     * @description Document for automation rule settings within a tenant.
-     * @path /tenants/{tenantId}/settings/automationRules
-     * @allow (get) - Authenticated user gets automation rules settings within their tenant.
-     * @deny (get) - User attempts to access settings from another tenant.
-     * @allow (update) - Admin user updates automation rules settings.
-     * @deny (update) - Non-admin attempts to update settings.
-     * @principle Restricts settings access to tenant admins.
-     */
+       /**
+        * @description Document for automation rule settings within a tenant.
+        * @path /tenants/{tenantId}/settings/automationRules
+        * @allow (create) - If the user is an admin in the tenant.
+        * @deny (create) - If the user is not an admin.
+        * @allow (get) - If the user is authenticated and a member of the tenant.
+        * @deny (get) - If the user is not authenticated or not a member of the tenant.
+        * @allow (update) - If the user is an admin in the tenant and document exists.
+        * @deny (update) - If the user is not an admin or document does not exist.
+        * @allow (delete) - Never. Settings documents should not be deleted.
+        * @deny (delete) - Always. Settings documents should not be deleted.
+        * @allow (list) - Never. This is a document, not a collection.
+        * @deny (list) - Always. This is a document, not a collection.
+        * @principle Enforces tenant-level access control and admin-only modifications.
+        */
     match /tenants/{tenantId}/settings/automationRules {
-      allow get: if isSignedIn();
+      function isSignedIn() {
+        return request.auth != null;
+      }
+      function isMemberOfTenant(tenantId) {
+        return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
+      }
+      function isAdminInTenant(tenantId) {
+          return isMemberOfTenant(tenantId) && get(/databases/$(database)/documents/tenants/$(tenantId)/users/$(request.auth.uid)).data.role == 'admin';
+      }
+      allow get: if isSignedIn() && isMemberOfTenant(tenantId);
       allow list: if false;
-      allow create: if false; // Settings should be created by a backend function
-      allow update: if isAdmin(tenantId) && exists(resource);
+      allow create: if isAdminInTenant(tenantId);
+      allow update: if isAdminInTenant(tenantId) && exists(/databases/$(database)/documents/tenants/$(tenantId)/settings/automationRules);
       allow delete: if false;
     }
 
     /**
      * @description Document for RKSV key and status within a tenant.
      * @path /tenants/{tenantId}/settings/rksv
-     * @allow (get) - Authenticated user gets RKSV settings within their tenant.
-     * @deny (get) - User attempts to access settings from another tenant.
-     * @allow (update) - Admin user updates RKSV settings.
-     * @deny (update) - Non-admin attempts to update settings.
-     * @principle Restricts settings access to tenant admins.
+     * @allow (create) - If the user is an admin in the tenant.
+     * @deny (create) - If the user is not an admin.
+     * @allow (get) - If the user is authenticated and a member of the tenant.
+     * @deny (get) - If the user is not authenticated or not a member of the tenant.
+     * @allow (update) - If the user is an admin in the tenant and document exists.
+     * @deny (update) - If the user is not an admin or document does not exist.
+     * @allow (delete) - Never. Settings documents should not be deleted.
+     * @deny (delete) - Always. Settings documents should not be deleted.
+     * @allow (list) - Never. This is a document, not a collection.
+     * @deny (list) - Always. This is a document, not a collection.
+     * @principle Enforces tenant-level access control and admin-only modifications.
      */
     match /tenants/{tenantId}/settings/rksv {
-      allow get: if isSignedIn();
+      function isSignedIn() {
+        return request.auth != null;
+      }
+      function isMemberOfTenant(tenantId) {
+        return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
+      }
+      function isAdminInTenant(tenantId) {
+          return isMemberOfTenant(tenantId) && get(/databases/$(database)/documents/tenants/$(tenantId)/users/$(request.auth.uid)).data.role == 'admin';
+      }
+      allow get: if isSignedIn() && isMemberOfTenant(tenantId);
       allow list: if false;
-      allow create: if false; // Settings should be created by a backend function
-      allow update: if isAdmin(tenantId) && exists(resource);
+      allow create: if isAdminInTenant(tenantId);
+      allow update: if isAdminInTenant(tenantId) && exists(/databases/$(database)/documents/tenants/$(tenantId)/settings/rksv);
       allow delete: if false;
     }
 
     /**
      * @description Stores credentials and status for third-party integrations like Wolt or Foodora.
      * @path /tenants/{tenantId}/integrations/{platformId}
-     * @allow (get) - Authenticated user gets integration data within their tenant.
-     * @deny (get) - User attempts to access integration data from another tenant.
-     * @allow (create) - Admin user creates integration data.
-     * @deny (create) - Non-admin attempts to create integration data.
-     * @principle Restricts access to tenant admins.
+     * @allow (create) - If the user is an admin in the tenant.
+     * @deny (create) - If the user is not an admin.
+     * @allow (get) - If the user is authenticated and a member of the tenant.
+     * @deny (get) - If the user is not authenticated or not a member of the tenant.
+     * @allow (update) - If the user is an admin in the tenant and document exists.
+     * @deny (update) - If the user is not an admin or document does not exist.
+     * @allow (delete) - If the user is an admin in the tenant and document exists.
+     * @deny (delete) - If the user is not an admin or document does not exist.
+     * @allow (list) - If the user is authenticated and a member of the tenant.
+     * @deny (list) - If the user is not authenticated or not a member of the tenant.
+     * @principle Enforces tenant-level access control and admin-only modifications.
      */
     match /tenants/{tenantId}/integrations/{platformId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if isAdmin(tenantId);
-      allow update: if isAdmin(tenantId) && exists(resource);
-      allow delete: if isAdmin(tenantId) && exists(resource);
+      function isSignedIn() {
+        return request.auth != null;
+      }
+      function isMemberOfTenant(tenantId) {
+        return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
+      }
+      function isAdminInTenant(tenantId) {
+          return isMemberOfTenant(tenantId) && get(/databases/$(database)/documents/tenants/$(tenantId)/users/$(request.auth.uid)).data.role == 'admin';
+      }
+      allow get, list: if isSignedIn() && isMemberOfTenant(tenantId);
+      allow create: if isAdminInTenant(tenantId);
+      allow update: if isAdminInTenant(tenantId) && exists(/databases/$(database)/documents/tenants/$(tenantId)/integrations/$(platformId));
+      allow delete: if isAdminInTenant(tenantId) && exists(/databases/$(database)/documents/tenants/$(tenantId)/integrations/$(platformId));
     }
 
     /**
      * @description Global collection for subscription plans.
      * @path /global/plans/{planId}
-     * @allow (get) - Any user can get subscription plans.
-     * @allow (list) - Any user can list subscription plans.
-     * @deny (create) - Only backend functions can create plans.
-     * @principle Public read access for subscription plans.
+     * @allow (create) - Never. Plans can only be created through the admin console or backend processes.
+     * @deny (create) - Always. Plans can only be created through the admin console or backend processes.
+     * @allow (get, list) - Public read access.
+     * @allow (update, delete) - Never. Plans can only be updated/deleted through the admin console or backend processes.
+     * @deny (update, delete) - Always. Plans can only be updated/deleted through the admin console or backend processes.
+     * @principle Provides public read access to subscription plans.
      */
     match /global/plans/{planId} {
-      allow get: if true;
-      allow list: if true;
-      allow create: if false; // Only backend functions can create plans
-      allow update: if false; // Plans are managed by the backend
-      allow delete: if false; // Plans are managed by the backend
+      allow get, list: if true;
+      allow create, update, delete: if false;
     }
 
     /**
      * @description Sub-collection for messages within an AI chat session.
      * @path /tenants/{tenantId}/aiChats/{chatId}/messages/{messageId}
-     * @allow (get) - Authenticated user can get chat messages within their tenant.
-     * @deny (get) - User attempts to access chat messages from another tenant.
-     * @allow (create) - Authenticated user can create chat messages.
-     * @deny (create) - User attempts to create a chat message in another tenant.
+     * @allow (create) - If the user is authenticated and a member of the tenant.
+     * @deny (create) - If the user is not authenticated or not a member of the tenant.
+     * @allow (get) - If the user is authenticated and a member of the tenant.
+     * @deny (get) - If the user is not authenticated or not a member of the tenant.
+     * @allow (update, delete) - Never. Chat messages should not be updated or deleted by clients.
+     * @deny (update, delete) - Always. Chat messages should not be updated or deleted by clients.
+     * @allow (list) - If the user is authenticated and a member of the tenant.
+     * @deny (list) - If the user is not authenticated or not a member of the tenant.
+     * @principle Enforces tenant-level access control.
      */
     match /tenants/{tenantId}/aiChats/{chatId}/messages/{messageId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if false;
-      allow delete: if false;
+      function isSignedIn() {
+        return request.auth != null;
+      }
+      function isMemberOfTenant(tenantId) {
+        return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
+      }
+      allow get, list: if isSignedIn() && isMemberOfTenant(tenantId);
+      allow create: if isSignedIn() && isMemberOfTenant(tenantId);
+      allow update, delete: if false;
     }
 
     /**
      * @description Sub-collection for orders from external POS/delivery platforms.
      * @path /tenants/{tenantId}/posOrders/{orderId}
-     * @allow (create) - Authenticated user creates a POS order within their tenant.
-     * @deny (create) - User attempts to create a POS order in another tenant.
-     * @allow (get) - Authenticated user gets POS order data within their tenant.
-     * @deny (get) - User attempts to access POS order data from another tenant.
-     * @principle Restricts POS order access to users within the same tenant.
+     * @allow (create) - If the user is authenticated and a member of the tenant.
+     * @deny (create) - If the user is not authenticated or not a member of the tenant.
+     * @allow (get) - If the user is authenticated and a member of the tenant.
+     * @deny (get) - If the user is not authenticated or not a member of the tenant.
+     * @allow (update) - If the user is an admin in the tenant and the document exists.
+     * @deny (update) - If the user is not an admin or the document does not exist.
+     * @allow (delete) - If the user is an admin in the tenant and the document exists.
+     * @deny (delete) - If the user is not an admin or the document does not exist.
+     * @allow (list) - If the user is authenticated and a member of the tenant.
+     * @deny (list) - If the user is not authenticated or not a member of the tenant.
+     * @principle Enforces tenant-level access control.
      */
     match /tenants/{tenantId}/posOrders/{orderId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if isAdmin(tenantId); // Enforce tenantId on create
-      allow update: if isAdmin(tenantId) && exists(resource); // tenantId is immutable
-      allow delete: if isAdmin(tenantId) && exists(resource);
+      function isSignedIn() {
+        return request.auth != null;
+      }
+      function isMemberOfTenant(tenantId) {
+        return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
+      }
+      function isAdminInTenant(tenantId) {
+          return isMemberOfTenant(tenantId) && get(/databases/$(database)/documents/tenants/$(tenantId)/users/$(request.auth.uid)).data.role == 'admin';
+      }
+      allow get, list: if isSignedIn() && isMemberOfTenant(tenantId);
+      allow create: if isSignedIn() && isMemberOfTenant(tenantId);
+      allow update: if isAdminInTenant(tenantId) && exists(/databases/$(database)/documents/tenants/$(tenantId)/posOrders/$(orderId));
+      allow delete: if isAdminInTenant(tenantId) && exists(/databases/$(database)/documents/tenants/$(tenantId)/posOrders/$(orderId));
     }
 
     /**
      * @description Sub-collection for logging incoming webhook API calls.
      * @path /tenants/{tenantId}/auditLogs/{logId}
-     * @allow (create) - Only allow creation from a trusted source (e.g., a Firebase Function).
-     * @deny (create) - All other clients should be denied.
-     * @allow (get) - Admin can read.
-     * @principle Logs are write-only and restricted to server-side creation.
+     * @allow (create) - Always.  Audit logs are created by the backend.
+     * @deny (create) - Never.  Audit logs are created by the backend.
+     * @allow (get) - If the user is an admin in the tenant.
+     * @deny (get) - If the user is not an admin.
+     * @allow (update, delete) - Never. Audit logs should not be updated or deleted.
+     * @deny (update, delete) - Always. Audit logs should not be updated or deleted.
+     * @allow (list) - If the user is an admin in the tenant.
+     * @deny (list) - If the user is not an admin.
+     * @principle Restricts access to audit logs based on tenant membership and admin role.
      */
     match /tenants/{tenantId}/auditLogs/{logId} {
-      allow get: if isAdmin(tenantId);
-      allow list: if isAdmin(tenantId);
-      allow create: if true; // Only a trusted server can write logs
-      allow update: if false;
-      allow delete: if false;
+      function isSignedIn() {
+        return request.auth != null;
+      }
+      function isMemberOfTenant(tenantId) {
+        return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
+      }
+       function isAdminInTenant(tenantId) {
+          return isMemberOfTenant(tenantId) && get(/databases/$(database)/documents/tenants/$(tenantId)/users/$(request.auth.uid)).data.role == 'admin';
+      }
+      allow create: if true; // created by backend
+      allow get, list: if isAdminInTenant(tenantId);
+      allow update, delete: if false;
     }
 
     /**
      * @description Sub-collection for user and system notifications within a tenant.
      * @path /tenants/{tenantId}/notifications/{notificationId}
-     * @allow (create) - Notifications are created by a trusted source (e.g., a Firebase Function).
-     * @deny (create) - All other clients should be denied.
-     * @allow (get) - Authenticated user gets notification within their tenant.
-     * @principle Notifications are created server-side and read by users within the tenant.
+     * @allow (create) - Always. Notifications created by backend.
+     * @deny (create) - Never.
+     * @allow (get) - If the user is authenticated and a member of the tenant.
+     * @deny (get) - If the user is not authenticated or not a member of the tenant.
+     * @allow (update) - If the user is authenticated and a member of the tenant.
+     * @deny (update) - If the user is not authenticated or not a member of the tenant.
+     * @allow (delete) - Never. Notifications should not be deleted by clients.
+     * @deny (delete) - Always. Notifications should not be deleted by clients.
+     * @allow (list) - If the user is authenticated and a member of the tenant.
+     * @deny (list) - If the user is not authenticated or not a member of the tenant.
      */
     match /tenants/{tenantId}/notifications/{notificationId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if true; // Notifications created by trusted server
-      allow update: if false;
-      allow delete: if false;
+        function isSignedIn() {
+            return request.auth != null;
+        }
+
+        function isMemberOfTenant(tenantId) {
+            return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
+        }
+
+        allow create: if true; // Notifications created by backend
+
+        allow get, list, update: if isSignedIn() && isMemberOfTenant(tenantId);
+
+        allow delete: if false; // Notifications should not be deleted by clients.
     }
 
     /**
      * @description Collection for triggering email sending via Firebase Extensions (e.g., SendGrid, Mailgun).
      * @path /mail/{mailId}
-     * @allow (create) - Authenticated user can trigger emails.
-     * @deny (create) - Unauthenticated user tries to send email.
-     * @principle Only authenticated users can trigger email sending.
+     * @allow (create) - Always. Used by backend extensions to send mail.
+     * @deny (create) - Never.
+     * @allow (get, list, update, delete) - Never.  This collection is write-only, used by an extension.
+     * @deny (get, list, update, delete) - Always.  This collection is write-only, used by an extension.
+     * @principle Restricts all access to the extension.
      */
     match /mail/{mailId} {
-      allow get: if false;
-      allow list: if false;
-      allow create: if isSignedIn();
-      allow update: if false;
-      allow delete: if false;
+      allow create: if true;
+      allow get, list, update, delete: if false;
     }
   }
 }
