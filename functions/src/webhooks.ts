@@ -1,5 +1,7 @@
+
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
+import * as crypto from 'crypto';
 
 /**
  * Handles incoming webhooks from delivery platforms like Wolt and Foodora.
@@ -14,13 +16,24 @@ export const integrationWebhook = functions.https.onRequest(async (req, res) => 
     // 2. Authenticate the request
     const apiKey = req.headers['x-api-key'] as string;
 
+    const firestore = admin.firestore();
+    const auditLogRef = firestore.collection(`tenants/${tenantId}/auditLogs`).doc();
+    const payloadHash = crypto.createHash('sha256').update(JSON.stringify(req.body)).digest('hex');
+
     if (!platform || !tenantId || !apiKey) {
         console.warn('Webhook called with missing parameters', { path: req.path, tenantId });
+        await auditLogRef.set({
+            platform: platform || 'unknown',
+            endpoint: req.path,
+            receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+            status: 'failed',
+            error: 'Missing platform, tenantId, or API key.',
+            payloadHash: payloadHash
+        });
         res.status(400).send('Bad Request: Missing platform, tenantId, or API key.');
         return;
     }
 
-    const firestore = admin.firestore();
 
     try {
         const integrationRef = firestore.doc(`tenants/${tenantId}/integrations/${platform}`);
@@ -28,6 +41,14 @@ export const integrationWebhook = functions.https.onRequest(async (req, res) => 
 
         if (!integrationDoc.exists || integrationDoc.data()?.apiKey !== apiKey) {
             console.warn(`Webhook unauthorized for tenant ${tenantId} and platform ${platform}`);
+            await auditLogRef.set({
+                platform: platform,
+                endpoint: req.path,
+                receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+                status: 'failed',
+                error: 'Unauthorized',
+                payloadHash: payloadHash
+            });
             res.status(401).send('Unauthorized');
             return;
         }
@@ -38,6 +59,14 @@ export const integrationWebhook = functions.https.onRequest(async (req, res) => 
         
         if (!orderId || !items || !totalAmount) {
             console.warn(`Webhook for tenant ${tenantId} received invalid order data`, orderData);
+            await auditLogRef.set({
+                platform: platform,
+                endpoint: req.path,
+                receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+                status: 'failed',
+                error: 'Invalid order payload',
+                payloadHash: payloadHash
+            });
             res.status(400).send('Bad Request: Invalid order payload.');
             return;
         }
@@ -71,6 +100,15 @@ export const integrationWebhook = functions.https.onRequest(async (req, res) => 
             paymentMethod: paymentType,
             relatedPosOrderId: orderId,
         });
+
+        // 4c. Write successful audit log
+        batch.set(auditLogRef, {
+            platform: platform,
+            endpoint: req.path,
+            receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+            status: 'success',
+            payloadHash: payloadHash
+        });
         
         await batch.commit();
 
@@ -79,6 +117,15 @@ export const integrationWebhook = functions.https.onRequest(async (req, res) => 
 
     } catch (error) {
         console.error(`Error processing webhook for tenant ${tenantId}:`, error);
+        // Log error to audit log
+         await auditLogRef.set({
+            platform: platform,
+            endpoint: req.path,
+            receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+            status: 'failed',
+            error: (error as Error).message || 'Internal Server Error',
+            payloadHash: payloadHash
+        });
         res.status(500).send('Internal Server Error');
     }
 });

@@ -427,6 +427,37 @@
         "source",
         "timestamp"
       ]
+    },
+    "AuditLog": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Audit Log",
+      "type": "object",
+      "description": "Logs an incoming API call from an external platform.",
+      "properties": {
+        "platform": {
+          "type": "string",
+          "description": "The originating platform (e.g., 'wolt')."
+        },
+        "endpoint": {
+          "type": "string",
+          "description": "The specific webhook endpoint that was hit."
+        },
+        "receivedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of when the webhook was received."
+        },
+        "payloadHash": {
+          "type": "string",
+          "description": "A SHA256 hash of the incoming payload for verification."
+        },
+        "status": {
+            "type": "string",
+            "enum": ["success", "failed"],
+            "description": "The outcome of processing the webhook."
+        }
+      },
+      "required": ["platform", "receivedAt", "payloadHash", "status"]
     }
   },
   "auth": {
@@ -506,6 +537,12 @@
         "$ref": "#/entities/POSOrder"
       },
       "description": "Sub-collection for orders from external POS/delivery platforms."
+    },
+    "/tenants/{tenantId}/auditLogs/{logId}": {
+        "schema": {
+            "$ref": "#/entities/AuditLog"
+        },
+        "description": "Sub-collection for logging incoming webhook API calls."
     }
   }
 }
