@@ -1,29 +1,27 @@
 /**
- * @fileoverview Firestore Security Rules for the application.
+ * @fileOverview Firestore Security Rules for the application.
  *
  * Core Philosophy:
- * This ruleset enforces a multi-tenant data model where data is primarily isolated at the tenant level.
- * Users are associated with tenants, and access is generally restricted to resources within their assigned tenant.
- * Global data (e.g., subscription plans) is stored in a dedicated collection with public read access.
+ * This ruleset enforces a multi-tenant security model where access to data is primarily restricted to users within their respective tenants.
+ * Users can only access data associated with their tenant, unless explicitly granted global permissions.
+ * The root `/users/{userId}` collection is used to map user IDs to tenant IDs for authorization purposes.
  *
  * Data Structure:
- * - /users/{userId}: Maps user UIDs to tenant IDs.
+ * - /users/{userId}: Maps user IDs to tenant IDs.
  * - /tenants/{tenantId}: Stores tenant information.
- * - /tenants/{tenantId}/users/{userId}: Stores user profiles within a tenant.
+ * - /tenants/{tenantId}/users/{userId}: Stores user data within a tenant.
  * - /tenants/{tenantId}/transactions/{transactionId}: Stores transaction data for a tenant.
- * - /tenants/{tenantId}/products/{productId}: Stores product information for a tenant.
- * - /tenants/{tenantId}/settings/{settingId}: Stores settings for a tenant.
+ * - /tenants/{tenantId}/products/{productId}: Stores product data for a tenant.
+ * - /tenants/{tenantId}/settings/general: Stores general settings for a tenant.
+ * - /tenants/{tenantId}/settings/modules: Stores module settings for a tenant.
  * - /global/plans/{planId}: Stores global subscription plans.
- * - /tenants/{tenantId}/aiChats/{chatId}/messages/{messageId}: Stores chat messages for a tenant.
+ * - /tenants/{tenantId}/aiChats/{chatId}/messages/{messageId}: Stores AI chat messages within a tenant.
  *
  * Key Security Decisions:
- * - Users can only list resources within their own tenant.
- * - Global subscription plans are publicly readable.
- * - Users can only modify their own user profile within a tenant.
- * - The /users/{userId} collection enforces that the user can only create their own document.
- *
- * Denormalization for Authorization:
- * - The `UserTenant` entity includes the `tenantId`, which is used to authorize access to tenant-specific resources.
+ * - Tenant Isolation: Data within a tenant is only accessible to users associated with that tenant.
+ * - User Listing Restrictions: Listing users within a tenant is only allowed for authenticated users of that tenant.
+ * - Root User Collection: The `/users/{userId}` collection requires that the authenticated user's ID matches the document ID being accessed and is required to have tenantId.
+ * - RKSV Settings: Access to the RKSV settings is restricted to authenticated users of the tenant.
  */
 rules_version = '2';
 service cloud.firestore {
@@ -32,17 +30,24 @@ service cloud.firestore {
     /**
      * @description Maps user UIDs to tenant IDs for security rules.
      * @path /users/{userId}
-     * @allow (create) User with UID 'user123' can create document /users/user123.
-     * @deny (create) User with UID 'user456' cannot create document /users/user123.
-     * @principle Enforces user-ownership for the /users collection: a user can only create their own document.
+     * @allow (create) - Authenticated user with matching UID can create their user-tenant mapping with tenantId set.
+     * @deny (create) - Authenticated user tries to create a mapping for a different user.
+     * @deny (get, list, update, delete) - All other operations are denied.
+     * @principle Enforces user-ownership and tenant assignment.
      */
     match /users/{userId} {
       function isOwner(userId) {
         return request.auth.uid == userId;
       }
-      allow get: if isOwner(userId);
+
+      function isValidCreate() {
+          return request.resource.data.keys().hasAll(['tenantId'])
+              && request.resource.data.tenantId is string;
+      }
+
+      allow get: if false;
       allow list: if false;
-      allow create: if isOwner(userId) && request.auth.uid == userId;
+      allow create: if isOwner(userId) && isValidCreate();
       allow update: if false;
       allow delete: if false;
     }
@@ -50,70 +55,101 @@ service cloud.firestore {
     /**
      * @description Stores tenant information.
      * @path /tenants/{tenantId}
-     * @allow (get) Any authenticated user can get tenant information.
-     * @deny (create) No one can create tenant information through client. Tenant creation only via admin SDK.
-     * @principle Tenants can only be created via the Admin SDK and are readable by anyone.
+     * @allow (get, list) - Public read access for tenants.
+     * @allow (create) - No direct creation allowed via client.
+     * @allow (update, delete) - No direct modification/deletion allowed via client.
+     * @deny (create, update, delete) - All write operations are denied.
+     * @principle Restricts tenant management to backend services.
      */
     match /tenants/{tenantId} {
-      function isSignedIn() {
-        return request.auth != null;
-      }
-      allow get: if isSignedIn();
-      allow list: if false;
+      allow get: if true;
+      allow list: if true;
       allow create: if false;
       allow update: if false;
       allow delete: if false;
     }
 
     /**
-     * @description Stores user profiles within a tenant.
+     * @description Stores user data within a tenant.
      * @path /tenants/{tenantId}/users/{userId}
-     * @allow (get) Any authenticated user can get user information.
-     * @allow (create) Any authenticated user can create user information.
-     * @deny (update) User cannot update another user's profile in the tenant.
-     * @principle Users can read all user profiles within their tenant, but can only update their own.
+     * @allow (get) - Authenticated user with matching UID can get their own data.
+     * @allow (list) - Authenticated user of tenant can list users within the tenant.
+     * @allow (create) - Authenticated user with matching UID can create their user data.
+     * @allow (update) - Authenticated user with matching UID can update their own data.
+     * @allow (delete) - Authenticated user with matching UID can delete their own data.
+     * @deny (get, create, update, delete) - Any other user tries to access/modify user data.
+     * @principle Enforces user-ownership within a tenant.
      */
     match /tenants/{tenantId}/users/{userId} {
-      function isSignedIn() {
-        return request.auth != null;
+      function isTenantUser(tenantId) {
+        return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
       }
-      allow get: if isSignedIn();
-      allow list: if false;
-      allow create: if isSignedIn();
-      allow update: if request.auth.uid == userId;
-      allow delete: if false;
+
+      function isOwner(userId) {
+          return request.auth.uid == userId;
+      }
+
+      allow get: if isOwner(userId) && isTenantUser(tenantId);
+      allow list: if isTenantUser(tenantId);
+      allow create: if isOwner(userId) && isTenantUser(tenantId);
+      allow update: if isOwner(userId) && isTenantUser(tenantId);
+      allow delete: if isOwner(userId) && isTenantUser(tenantId);
     }
 
     /**
      * @description Stores transaction data for a tenant.
      * @path /tenants/{tenantId}/transactions/{transactionId}
-     * @allow (get) Any authenticated user can get transaction data.
-     * @deny (create) No one can create transaction data through client. Transaction creation only via admin SDK.
-     * @principle Transactions can only be created via the Admin SDK and are readable by anyone.
+     * @allow (get, list) - Authenticated user of tenant can read transactions.
+     * @allow (create, update, delete) - Not directly allowed via client.
+     * @deny (create, update, delete) - All write operations are denied.
+     * @principle Restricts transaction management to backend services.
      */
     match /tenants/{tenantId}/transactions/{transactionId} {
-      function isSignedIn() {
-        return request.auth != null;
+      function isTenantUser(tenantId) {
+        return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
       }
-      allow get: if isSignedIn();
-      allow list: if false;
+
+      allow get: if isTenantUser(tenantId);
+      allow list: if isTenantUser(tenantId);
       allow create: if false;
       allow update: if false;
       allow delete: if false;
     }
 
     /**
-     * @description Stores product information for a tenant.
+     * @description Stores product data for a tenant.
      * @path /tenants/{tenantId}/products/{productId}
-     * @allow (get) Any authenticated user can get product data.
-     * @deny (create) No one can create product data through client. Product creation only via admin SDK.
-     * @principle Products can only be created via the Admin SDK and are readable by anyone.
+     * @allow (get, list) - Authenticated user of tenant can read products.
+     * @allow (create, update, delete) - Not directly allowed via client.
+     * @deny (create, update, delete) - All write operations are denied.
+     * @principle Restricts product management to backend services.
      */
     match /tenants/{tenantId}/products/{productId} {
-      function isSignedIn() {
-        return request.auth != null;
+      function isTenantUser(tenantId) {
+        return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
       }
-      allow get: if isSignedIn();
+
+      allow get: if isTenantUser(tenantId);
+      allow list: if isTenantUser(tenantId);
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    /**
+     * @description Stores general settings for a tenant.
+     * @path /tenants/{tenantId}/settings/general
+     * @allow (get) - Authenticated user of tenant can read general settings.
+     * @allow (create, update, delete) - Not directly allowed via client.
+     * @deny (create, update, delete) - All write operations are denied.
+     * @principle Restricts settings management to backend services.
+     */
+    match /tenants/{tenantId}/settings/general {
+      function isTenantUser(tenantId) {
+        return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
+      }
+
+      allow get: if isTenantUser(tenantId);
       allow list: if false;
       allow create: if false;
       allow update: if false;
@@ -121,29 +157,52 @@ service cloud.firestore {
     }
 
     /**
-     * @description Stores settings for a tenant.
-     * @path /tenants/{tenantId}/settings/{settingId}
-     * @allow (get) Any authenticated user can get settings data.
-     * @deny (create) No one can create settings data through client. Settings creation only via admin SDK.
-     * @principle Settings can only be created via the Admin SDK and are readable by anyone.
+     * @description Stores module settings for a tenant.
+     * @path /tenants/{tenantId}/settings/modules
+     * @allow (get) - Authenticated user of tenant can read module settings.
+     * @allow (create, update, delete) - Not directly allowed via client.
+     * @deny (create, update, delete) - All write operations are denied.
+     * @principle Restricts module settings management to backend services.
      */
-    match /tenants/{tenantId}/settings/{settingId} {
-      function isSignedIn() {
-        return request.auth != null;
+    match /tenants/{tenantId}/settings/modules {
+      function isTenantUser(tenantId) {
+        return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
       }
-      allow get: if isSignedIn();
+
+      allow get: if isTenantUser(tenantId);
       allow list: if false;
       allow create: if false;
       allow update: if false;
       allow delete: if false;
+    }
+
+     /**
+     * @description Stores RKSV key and status within a tenant.
+     * @path /tenants/{tenantId}/settings/rksv
+     * @allow (get) - Authenticated user of tenant can read RKSV settings.
+     * @allow (create, update, delete) - Not directly allowed via client.
+     * @deny (create, update, delete) - All write operations are denied.
+     * @principle Restricts RKSV settings management to backend services.
+     */
+    match /tenants/{tenantId}/settings/rksv {
+       function isTenantUser(tenantId) {
+         return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
+       }
+
+       allow get: if isTenantUser(tenantId);
+       allow list: if false;
+       allow create: if false;
+       allow update: if false;
+       allow delete: if false;
     }
 
     /**
      * @description Stores global subscription plans.
      * @path /global/plans/{planId}
-     * @allow (get) Any user can read the plan.
-     * @deny (create) No one can create plan data through client. Plan creation only via admin SDK.
-     * @principle Subscription plans are publicly readable but can only be created/updated via the Admin SDK.
+     * @allow (get, list) - Public read access for subscription plans.
+     * @allow (create, update, delete) - Not directly allowed via client.
+     * @deny (create, update, delete) - All write operations are denied.
+     * @principle Restricts plan management to backend services.
      */
     match /global/plans/{planId} {
       allow get: if true;
@@ -154,32 +213,23 @@ service cloud.firestore {
     }
 
     /**
-     * @description Stores chat messages for a tenant.
+     * @description Stores AI chat messages within a tenant.
      * @path /tenants/{tenantId}/aiChats/{chatId}/messages/{messageId}
-     * @allow (get) Any authenticated user can read messages.
-     * @allow (list) Any authenticated user can list messages.
-     * @deny (create) No one can create message data through client. Message creation only via backend SDK.
-     * @principle Chat messages can only be created via the backend SDK and are readable by anyone.
+     * @allow (get, list) - Authenticated user of tenant can read chat messages.
+     * @allow (create, update, delete) - Not directly allowed via client.
+     * @deny (create, update, delete) - All write operations are denied.
+     * @principle Restricts chat message management to backend services.
      */
     match /tenants/{tenantId}/aiChats/{chatId}/messages/{messageId} {
-      function isSignedIn() {
-        return request.auth != null;
+      function isTenantUser(tenantId) {
+        return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
       }
-      allow get: if isSignedIn();
-      allow list: if false;
+
+      allow get: if isTenantUser(tenantId);
+      allow list: if isTenantUser(tenantId);
       allow create: if false;
       allow update: if false;
       allow delete: if false;
     }
-     /**
-     * @description Stores chat messages for a tenant, at a deeper level. This rule is specifically to fix an error reported by NextJS that the user does not have sufficent permission to `list` chat messages.
-     * @path /tenants/{tenantId}/aiChats/{chatId}/messages
-     */
-      match /tenants/{tenantId}/aiChats/{chatId}/messages {
-          function isSignedIn() {
-          return request.auth != null;
-        }
-        allow list: if isSignedIn(); // Fixes the reported error.
-      }
   }
 }
