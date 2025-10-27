@@ -31,6 +31,24 @@ const addNotification = (
   return firestore.collection(`tenants/${tenantId}/notifications`).add(notification);
 };
 
+// Helper function to add an audit log
+const addAuditLog = (
+  firestore: admin.firestore.Firestore,
+  tenantId: string,
+  rule: string,
+  details: Record<string, any> = {}
+) => {
+    const logEntry = {
+        type: 'automationTrigger',
+        rule: rule,
+        triggeredAt: Timestamp.now(),
+        tenantId: tenantId,
+        details: details
+    };
+    return firestore.collection(`tenants/${tenantId}/auditLogs`).add(logEntry);
+}
+
+
 /**
  * Scheduled function that runs every 15 minutes to perform automated checks.
  */
@@ -109,6 +127,7 @@ async function runChecksForTenant(firestore: admin.firestore.Firestore, tenantId
             'Your daily business summary is now available in the Reports tab.',
             'info'
         );
+        await addAuditLog(firestore, tenantId, 'dailySummary');
     }
     
     await checkHighOrderVolume(firestore, tenantId, rules, createUniqueNotification);
@@ -133,6 +152,7 @@ async function checkHighOrderVolume(firestore: admin.firestore.Firestore, tenant
             `High order traffic detected (${transactionsSnapshot.size} orders in the last 10 mins). Prepare kitchen team!`,
             'alert'
         );
+        await addAuditLog(firestore, tenantId, 'highOrderVolume', { transactionCount: transactionsSnapshot.size, threshold: rules.highOrderVolumeThreshold });
     }
 }
 
@@ -149,6 +169,7 @@ async function checkIntegrationErrors(firestore: admin.firestore.Firestore, tena
                 `⚠️ ${doc.id} connection appears inactive. Last sync was over ${rules.integrationTimeoutMinutes} minutes ago.`,
                 'alert'
             );
+            await addAuditLog(firestore, tenantId, 'integrationTimeout', { platform: doc.id, lastSync: integration.lastSync.toDate() });
         }
     }
 }
@@ -172,6 +193,7 @@ async function checkBestSellerSpike(firestore: admin.firestore.Firestore, tenant
                 `Product "${todaySales[productId].name}" is trending! Sales have increased by over 200% today. Consider reordering stock.`,
                 'insight'
             );
+            await addAuditLog(firestore, tenantId, 'bestSellerSpike', { productId: productId, productName: todaySales[productId].name, todayQty, yesterdayQty });
         }
     }
 }
@@ -211,7 +233,6 @@ async function checkLowStock(firestore: admin.firestore.Firestore, tenantId: str
             `Low stock: ${product.name} (only ${product.quantity} left).`,
             'alert'
         );
+        await addAuditLog(firestore, tenantId, 'lowStock', { productId: doc.id, productName: product.name, quantity: product.quantity, threshold: rules.lowStockThreshold });
     }
 }
-
-    
