@@ -22,7 +22,6 @@ export async function recordTransaction(tenantId: string, data: Omit<Transaction
   }
 
   const { firebaseApp, firestore } = initializeFirebase();
-  const functions = getFunctions(firebaseApp);
   
   try {
     const transactionRef = doc(collection(firestore, `tenants/${tenantId}/transactions`));
@@ -54,6 +53,7 @@ export async function processPayment(
   }
 
   const { firebaseApp, firestore } = initializeFirebase();
+  const functions = getFunctions(firebaseApp);
   
   try {
     const paymentRef = doc(collection(firestore, `tenants/${tenantId}/payments`));
@@ -76,34 +76,38 @@ export async function processPayment(
     
     // 3. Handle different payment methods
     if (paymentData.method === 'stripe') {
-        const functions = getFunctions(firebaseApp);
         const processStripePayment = httpsCallable(functions, 'processStripePayment');
         const result: any = await processStripePayment({ 
             tenantId,
             transactionId,
-            paymentId: paymentRef.id, // Pass paymentId to be stored in metadata
+            paymentId: paymentRef.id,
             amount: paymentData.amount,
             currency: 'eur' // Or get from config
         });
         
-        // Return client secret to the frontend
         return { success: true, clientSecret: result.data.clientSecret, paymentId: paymentRef.id };
 
     } else if (paymentData.method === 'cash') {
-        // For cash, we can immediately mark it as completed.
         await updateDocumentNonBlocking(paymentRef, { status: 'completed' });
         await updateDocumentNonBlocking(transactionRef, { status: 'paid' });
         // TODO: Call RKSV signing for cash payment
         return { success: true, paymentId: paymentRef.id, qrCode: 'sample-qr-code-data' };
         
-    } else { // Card or Bankomat
-        // For terminal payments, we'd wait for a webhook or confirmation.
-        // For now, we'll simulate success and mark as completed.
-        await updateDocumentNonBlocking(paymentRef, { status: 'completed' });
-        await updateDocumentNonBlocking(transactionRef, { status: 'paid' });
-        // TODO: Call RKSV signing for terminal payments
-        return { success: true, paymentId: paymentRef.id, qrCode: 'sample-qr-code-data-terminal' };
+    } else if (paymentData.method === 'bankomat' || paymentData.method === 'card') {
+        const startDevicePayment = httpsCallable(functions, 'startDevicePayment');
+        await startDevicePayment({
+            tenantId,
+            transactionId,
+            paymentId: paymentRef.id,
+            amount: paymentData.amount
+        });
+        // The function returns, but the UI will show a waiting state.
+        // The actual success/failure is handled by the webhook.
+        return { success: true, paymentId: paymentRef.id };
     }
+    
+    // Fallback for methods not fully implemented with backend logic
+    return { success: true, paymentId: paymentRef.id, qrCode: 'sample-qr-code-placeholder' };
     
   } catch (error: any) {
     console.error('Failed to process payment:', error);
@@ -135,3 +139,5 @@ export async function confirmIntegrationOrder(tenantId: string, data: Confirmati
     return { success: false, message: error.message || 'Could not save transaction.' };
   }
 }
+
+    

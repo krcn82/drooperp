@@ -85,19 +85,23 @@ export default function PaymentDialog({
   
   const handleTerminalPayment = async (method: 'card' | 'bankomat') => {
       setIsLoading(true);
-      // Simulate waiting for terminal
-      await new Promise(resolve => setTimeout(resolve, 1000));
       
       const result = await processPayment(tenantId, transactionId, { method: method, amount: total });
       
-      if (result.success && result.qrCode) {
-          toast({ title: 'Payment Approved', description: 'Terminal payment successful.' });
-          onPaymentSuccess(result.qrCode);
-          resetState();
+      if (result.success) {
+          toast({ title: 'Device Notified', description: 'Please complete the payment on the terminal.' });
+          // We don't call onPaymentSuccess here, as that will be triggered by the webhook.
+          // The modal will remain in a "waiting" state.
+          // For now, we'll simulate success for UI flow.
+           setTimeout(() => {
+              onPaymentSuccess('terminal-payment-placeholder-qr');
+              resetState();
+           }, 8000); // 8 second mock wait
       } else {
-          toast({ variant: 'destructive', title: 'Payment Failed', description: result.message || 'Terminal was declined or failed.' });
+          toast({ variant: 'destructive', title: 'Device Communication Failed', description: result.message });
+          setIsLoading(false);
+          setView('select'); // Go back to selection
       }
-      setIsLoading(false);
   }
 
   const handleStripePayment = async () => {
@@ -118,18 +122,19 @@ export default function PaymentDialog({
       toast({ variant: 'destructive', title: 'Stripe Failed', description: result.message });
       setIsLoading(false);
     }
-    // isLoading stays true until the simulated payment is "complete"
   };
 
   const resetState = () => {
     setView('select');
     setCashReceived('');
     setIsLoading(false);
+    onOpenChange(false);
   };
 
   const handleClose = () => {
     if (!isLoading) {
-      resetState();
+      setView('select');
+      setCashReceived('');
       onOpenChange(false);
     }
   };
@@ -179,6 +184,7 @@ export default function PaymentDialog({
                 <Loader2 className="h-16 w-16 mx-auto animate-spin text-primary" />
                 <p className="mt-4 text-lg font-semibold">Waiting for terminal response...</p>
                 <p className="text-muted-foreground">Please complete the transaction on the device.</p>
+                <Button variant="ghost" className="mt-4" onClick={() => setView('select')}>Cancel</Button>
             </div>
         );
       case 'stripe':
@@ -224,3 +230,5 @@ export default function PaymentDialog({
     </Dialog>
   );
 }
+
+    

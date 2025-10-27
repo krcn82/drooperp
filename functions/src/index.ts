@@ -18,3 +18,6 @@ export * from './syncMenu';
 export * from './automationWorker';
 export * from './sendNotificationAlert';
 export * from './stripe';
+export * from './paymentDevice';
+
+    

@@ -266,6 +266,10 @@
         "themeColor": {
           "type": "string",
           "description": "The primary color for the UI theme."
+        },
+        "paymentBridgeUrl": {
+          "type": "string",
+          "description": "The local network URL for the payment device bridge."
         }
       }
     },
@@ -580,6 +584,10 @@
           "type": "string",
           "enum": ["completed", "failed", "pending"],
           "description": "Status of the payment."
+        },
+        "deviceResponse": {
+            "type": "object",
+            "description": "The raw response object from the payment device."
         }
       },
       "required": ["id", "tenantId", "transactionId", "method", "amount", "timestamp", "status"]
@@ -708,3 +716,5 @@
     }
   }
 }
+
+    
