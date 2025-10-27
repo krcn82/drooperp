@@ -1,20 +1,22 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CreditCard, ShoppingCart, QrCode, X, Plus, Minus, Barcode, WifiOff, Camera, Search, Bot } from 'lucide-react';
-import { useUser } from '@/firebase';
+import { CreditCard, ShoppingCart, QrCode, X, Plus, Minus, Barcode, WifiOff, Camera, Search, Bot, Bell } from 'lucide-react';
+import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { collection, query, where } from 'firebase/firestore';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import Quagga from '@ericblade/quagga2';
 import QRCode from 'qrcode.react';
-import { recordTransaction } from './actions';
+import { recordTransaction, confirmIntegrationOrder } from './actions';
 import { useAiState } from '@/hooks/use-ai-state';
+import { Badge } from '@/components/ui/badge';
 
 type Product = {
   id: string;
@@ -30,6 +32,15 @@ type CartItem = {
   price: number;
 };
 
+type PosOrder = {
+    id: string;
+    source: string;
+    items: {name: string; qty: number; price: number}[];
+    totalAmount: number;
+    relatedTransactionId: string;
+};
+
+
 const sampleProducts: Product[] = [
   { id: '8992761139976', name: 'T-Shirt', price: 20.00, category: 'Apparel' },
   { id: 'prod_2', name: 'Mug', price: 15.00, category: 'Accessories' },
@@ -39,8 +50,10 @@ const sampleProducts: Product[] = [
 
 export default function PosPage() {
   const { user } = useUser();
+  const firestore = useFirestore();
   const { toast } = useToast();
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [tenantId, setTenantId] = useState<string|null>(null);
   const [isClient, setIsClient] = useState(false);
   const [isPaymentOpen, setPaymentOpen] = useState(false);
   const [isConfirmationOpen, setConfirmationOpen] = useState(false);
@@ -55,6 +68,7 @@ export default function PosPage() {
 
   useEffect(() => {
     setIsClient(true);
+    setTenantId(localStorage.getItem('tenantId'));
     const handleOnline = () => setIsOffline(false);
     const handleOffline = () => setIsOffline(true);
     window.addEventListener('online', handleOnline);
@@ -65,6 +79,14 @@ export default function PosPage() {
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
+  
+  const pendingOrdersQuery = useMemoFirebase(() => {
+    if (!firestore || !tenantId) return null;
+    return query(collection(firestore, `tenants/${tenantId}/posOrders`), where('status', '==', 'pending'));
+  }, [firestore, tenantId]);
+
+  const { data: pendingOrders, isLoading: pendingOrdersLoading } = useCollection<PosOrder>(pendingOrdersQuery);
+
 
   const handleAskAi = () => {
     setPrefilledMessage('Analyze my recent sales performance.');
@@ -98,24 +120,17 @@ export default function PosPage() {
   const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
   const handlePayment = async (paymentMethod: 'cash' | 'card') => {
-    if (!user) {
-      toast({ variant: 'destructive', title: 'Error', description: 'You must be logged in to make a transaction.' });
-      return;
-    }
-    const tenantId = localStorage.getItem('tenantId');
-    if (!tenantId) {
-      toast({ variant: 'destructive', title: 'Error', description: 'Tenant ID not found.' });
+    if (!user || !tenantId) {
+      toast({ variant: 'destructive', title: 'Error', description: 'Cannot process payment. User or Tenant not identified.' });
       return;
     }
 
     const transactionData = {
-      productIds: cart.map(item => item.productId),
-      quantities: cart.map(item => item.quantity),
+      items: cart.map(i => ({ name: i.name, qty: i.quantity, price: i.price, productId: i.productId })),
       cashierUserId: user.uid,
       amountTotal: total,
       paymentMethod,
       type: 'shop' as 'shop' | 'restaurant',
-      items: cart.map(i => ({ name: i.name, qty: i.quantity, price: i.price, productId: i.productId }))
     };
 
     const result = await recordTransaction(tenantId, transactionData);
@@ -127,6 +142,27 @@ export default function PosPage() {
       setCart([]);
     } else {
       toast({ variant: 'destructive', title: 'Transaction Failed', description: result.message });
+    }
+  };
+  
+  const handleConfirmOrder = async (order: PosOrder) => {
+    if (!user || !tenantId || !order.relatedTransactionId) {
+      toast({ variant: 'destructive', title: 'Error', description: 'Cannot process order. Missing required information.' });
+      return;
+    }
+
+    const confirmationData = {
+      transactionId: order.relatedTransactionId,
+      cashierUserId: user.uid,
+    };
+    
+    const result = await confirmIntegrationOrder(tenantId, confirmationData);
+    
+    if (result.success && result.transactionId) {
+      toast({ title: 'Order Confirmed', description: `Order from ${order.source} has been processed.` });
+      // The Firestore listener will automatically remove the order from the list
+    } else {
+      toast({ variant: 'destructive', title: 'Confirmation Failed', description: result.message });
     }
   };
 
@@ -316,30 +352,67 @@ export default function PosPage() {
                 </Card>
 
                 {/* Product Selection */}
-                <Card>
-                   <CardHeader>
-                    <CardTitle>Products</CardTitle>
-                     <div className="relative mt-2">
-                       <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                       <Input
-                         placeholder="Search products or categories..."
-                         className="pl-8"
-                         value={searchTerm}
-                         onChange={e => setSearchTerm(e.target.value)}
-                       />
-                     </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                      {filteredProducts.map(product => (
-                        <Button key={product.id} variant="outline" className="h-20 text-center flex-col gap-1" onClick={() => addToCart(product)}>
-                          <span className="font-semibold">{product.name}</span>
-                          <span className="text-muted-foreground">${product.price.toFixed(2)}</span>
-                        </Button>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
+                <div className="flex flex-col gap-6">
+                    <Card>
+                       <CardHeader>
+                        <CardTitle>Products</CardTitle>
+                         <div className="relative mt-2">
+                           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                           <Input
+                             placeholder="Search products or categories..."
+                             className="pl-8"
+                             value={searchTerm}
+                             onChange={e => setSearchTerm(e.target.value)}
+                           />
+                         </div>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                          {filteredProducts.map(product => (
+                            <Button key={product.id} variant="outline" className="h-20 text-center flex-col gap-1" onClick={() => addToCart(product)}>
+                              <span className="font-semibold">{product.name}</span>
+                              <span className="text-muted-foreground">${product.price.toFixed(2)}</span>
+                            </Button>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                    
+                    {/* Pending Integration Orders */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <Bell />
+                                Incoming Orders
+                                {pendingOrders && pendingOrders.length > 0 && <Badge className="animate-pulse">{pendingOrders.length}</Badge>}
+                            </CardTitle>
+                            <CardDescription>Orders from integrated platforms like Wolt or Foodora.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            {pendingOrdersLoading && <p>Loading incoming orders...</p>}
+                            {!pendingOrdersLoading && pendingOrders?.length === 0 && <p className="text-sm text-muted-foreground">No new orders at the moment.</p>}
+                            {pendingOrders?.map(order => (
+                                <Card key={order.id} className="bg-muted/50">
+                                    <CardHeader className="p-4">
+                                        <CardTitle className="text-md flex justify-between">
+                                            <span>Order from {order.source}</span>
+                                            <span className="font-bold text-lg">${order.totalAmount.toFixed(2)}</span>
+                                        </CardTitle>
+                                        <CardDescription>Order ID: {order.id}</CardDescription>
+                                    </CardHeader>
+                                    <CardContent className="p-4 pt-0">
+                                        <ul className="text-sm space-y-1">
+                                            {order.items.map((item, index) => <li key={index}>{item.qty}x {item.name}</li>)}
+                                        </ul>
+                                    </CardContent>
+                                    <CardFooter className="p-4">
+                                        <Button className="w-full" onClick={() => handleConfirmOrder(order)}>Confirm Order</Button>
+                                    </CardFooter>
+                                </Card>
+                            ))}
+                        </CardContent>
+                    </Card>
+                </div>
               </div>
             </TabsContent>
             <TabsContent value="restaurant">
@@ -425,3 +498,5 @@ export default function PosPage() {
     </div>
   );
 }
+
+    

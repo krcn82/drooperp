@@ -4,6 +4,8 @@ import * as crypto from 'crypto';
 
 /**
  * Records a single transaction in Firestore for a given tenant.
+ * Can be used to create a new transaction from scratch (e.g. from POS)
+ * or to confirm and sign a pending transaction (e.g. from a webhook).
  */
 export const recordTransaction = functions.https.onCall(async (data, context) => {
   const { tenantId, transactionData } = data;
@@ -13,88 +15,97 @@ export const recordTransaction = functions.https.onCall(async (data, context) =>
   if (!uid) {
     throw new functions.https.HttpsError('unauthenticated', 'The function must be called while authenticated.');
   }
-
-  // 2. Input Validation
   if (!tenantId || !transactionData) {
     throw new functions.https.HttpsError('invalid-argument', 'Missing required data: tenantId or transactionData.');
   }
 
-  const {
-    items,
-    totalAmount,
-    paymentMethod,
-    cashierUserId,
-    type,
-    tableId,
-  } = transactionData;
+  // Determine mode: creating new or confirming existing
+  const isConfirming = !!transactionData.transactionId;
 
-  if (
-    !Array.isArray(items) ||
-    items.length === 0 ||
-    !totalAmount ||
-    !paymentMethod ||
-    !cashierUserId ||
-    !type
-  ) {
-    throw new functions.https.HttpsError('invalid-argument', 'TransactionData is missing required fields.');
-  }
+  const firestore = admin.firestore();
+  const rksvSettingsRef = firestore.doc(`tenants/${tenantId}/settings/rksv`);
 
-  // 3. Process Transaction
   try {
-    // Calculate total from items to validate against totalAmount from client
-    const calculatedTotal = items.reduce((acc, item) => acc + item.price * item.qty, 0);
-    if (Math.abs(calculatedTotal - totalAmount) > 0.01) { // Use a tolerance for floating point comparison
-        throw new functions.https.HttpsError('invalid-argument', `Calculated total (${calculatedTotal}) does not match provided totalAmount (${totalAmount}).`);
-    }
-
-    const firestore = admin.firestore();
-    const transactionRef = firestore.collection(`tenants/${tenantId}/transactions`).doc();
-    const rksvSettingsRef = firestore.doc(`tenants/${tenantId}/settings/rksv`);
-
-    // RKSV Signature Chaining
     const rksvDoc = await rksvSettingsRef.get();
     const rksvData = rksvDoc.data();
-    let previousSignature = '0';
-    if (rksvData && rksvData.lastSignature) {
-        previousSignature = rksvData.lastSignature;
+    if (!rksvData || !rksvData.rksvActive) {
+        throw new functions.https.HttpsError('failed-precondition', 'RKSV is not active for this tenant.');
     }
-
-    const currentTransactionString = JSON.stringify(transactionData);
-    const signaturePayload = previousSignature + currentTransactionString;
-    const currentSignature = crypto.createHash('sha256').update(signaturePayload).digest('hex');
-    const qrCode = Buffer.from(signaturePayload).toString('base64');
-
-
-    const finalTransactionData: any = {
-      ...transactionData,
-      timestamp: admin.firestore.FieldValue.serverTimestamp(),
-      paidImmediately: paymentMethod === 'cash',
-      signature: currentSignature,
-      qrCode: qrCode,
-    };
     
-    // Ensure only "restaurant" type has a tableId
-    if (type !== 'restaurant') {
-        delete finalTransactionData.tableId;
-    }
+    let transactionRef: admin.firestore.DocumentReference;
+    let dataToSign: any;
 
-    // 4. Write to Firestore in a transaction to ensure atomicity
-    await firestore.runTransaction(async (t) => {
-        t.set(transactionRef, finalTransactionData);
-        t.update(rksvSettingsRef, { lastSignature: currentSignature });
+    // A Firestore transaction is used to ensure atomicity
+    const qrCode = await firestore.runTransaction(async (t) => {
+        let previousSignature = rksvData.lastSignature || '0';
+
+        if (isConfirming) {
+            // CONFIRMING an existing pending transaction
+            transactionRef = firestore.collection(`tenants/${tenantId}/transactions`).doc(transactionData.transactionId);
+            const txDoc = await t.get(transactionRef);
+            if (!txDoc.exists) {
+                throw new functions.https.HttpsError('not-found', 'The transaction to confirm does not exist.');
+            }
+            dataToSign = txDoc.data();
+            
+            const signaturePayload = previousSignature + JSON.stringify(dataToSign);
+            const currentSignature = crypto.createHash('sha256').update(signaturePayload).digest('hex');
+            const qrCodeData = Buffer.from(signaturePayload).toString('base64');
+            
+            t.update(transactionRef, {
+                status: 'completed',
+                cashierUserId: transactionData.cashierUserId,
+                signature: currentSignature,
+                qrCode: qrCodeData,
+            });
+            t.update(rksvSettingsRef, { lastSignature: currentSignature });
+
+            // Also update the status of the related posOrder document
+            const posOrderRef = firestore.doc(`tenants/${tenantId}/posOrders/${dataToSign.relatedPosOrderId}`);
+            t.update(posOrderRef, { status: 'completed' });
+
+            return qrCodeData;
+        } else {
+            // CREATING a new transaction from POS
+            const { items, totalAmount, paymentMethod, cashierUserId, type } = transactionData;
+            const calculatedTotal = items.reduce((acc: number, item: any) => acc + item.price * item.qty, 0);
+            if (Math.abs(calculatedTotal - totalAmount) > 0.01) {
+                throw new functions.https.HttpsError('invalid-argument', 'Calculated total does not match provided totalAmount.');
+            }
+            
+            transactionRef = firestore.collection(`tenants/${tenantId}/transactions`).doc();
+            dataToSign = {
+                ...transactionData,
+                timestamp: admin.firestore.Timestamp.now(), // Use server timestamp for signing
+            };
+
+            const signaturePayload = previousSignature + JSON.stringify(dataToSign);
+            const currentSignature = crypto.createHash('sha256').update(signaturePayload).digest('hex');
+            const qrCodeData = Buffer.from(signaturePayload).toString('base64');
+
+            t.set(transactionRef, {
+                ...dataToSign,
+                status: 'completed',
+                paidImmediately: paymentMethod === 'cash',
+                signature: currentSignature,
+                qrCode: qrCodeData,
+            });
+            t.update(rksvSettingsRef, { lastSignature: currentSignature });
+            
+            return qrCodeData;
+        }
     });
 
-
-    console.info(`Transaction ${transactionRef.id} recorded successfully for tenant ${tenantId}.`);
-
-    // 5. Return success response
+    console.info(`Transaction ${transactionRef.id} processed successfully for tenant ${tenantId}.`);
     return { status: 'success', transactionId: transactionRef.id, qrCode };
-    
+
   } catch (error: any) {
     console.error('Error recording transaction:', error);
     if (error instanceof functions.https.HttpsError) {
-        throw error; // Re-throw HttpsError
+        throw error;
     }
     throw new functions.https.HttpsError('internal', 'An error occurred while recording the transaction.', error.message);
   }
 });
+
+    

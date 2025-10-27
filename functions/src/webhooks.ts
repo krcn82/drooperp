@@ -44,6 +44,9 @@ export const integrationWebhook = functions.https.onRequest(async (req, res) => 
         
         // 4. Create documents in a batch/transaction for atomicity
         const batch = firestore.batch();
+        
+        // Create a reference for the new transaction first to get its ID
+        const transactionRef = firestore.collection(`tenants/${tenantId}/transactions`).doc();
 
         // 4a. Write to /posOrders
         const posOrderRef = firestore.doc(`tenants/${tenantId}/posOrders/${orderId}`);
@@ -52,15 +55,16 @@ export const integrationWebhook = functions.https.onRequest(async (req, res) => 
             source: platform,
             tenantId: tenantId,
             receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+            status: 'pending', // Initial status for POS UI
+            relatedTransactionId: transactionRef.id, // Link to the transaction
         });
 
-        // 4b. Write to /transactions
-        const transactionRef = firestore.collection(`tenants/${tenantId}/transactions`).doc();
+        // 4b. Write to /transactions with a pending status
         batch.set(transactionRef, {
-            amount: totalAmount,
+            amountTotal: totalAmount,
             source: platform,
             status: 'pending',
-            createdAt: timestamp ? admin.firestore.Timestamp.fromDate(new Date(timestamp)) : admin.firestore.FieldValue.serverTimestamp(),
+            timestamp: timestamp ? admin.firestore.Timestamp.fromDate(new Date(timestamp)) : admin.firestore.FieldValue.serverTimestamp(),
             type: 'sale',
             items: items,
             customer: customer,
@@ -78,3 +82,5 @@ export const integrationWebhook = functions.https.onRequest(async (req, res) => 
         res.status(500).send('Internal Server Error');
     }
 });
+
+    
