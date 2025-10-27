@@ -139,6 +139,7 @@ async function runChecksForTenant(firestore: admin.firestore.Firestore, tenantId
     await checkStripeErrors(firestore, tenantId, createUniqueNotification);
     await checkBankomatErrors(firestore, tenantId, createUniqueNotification);
     await checkStaleCashDrawers(firestore, tenantId, createUniqueNotification);
+    await checkFailedPayments(firestore, tenantId, createUniqueNotification);
     
   } catch (error) {
     console.error(`Failed to run checks for tenant ${tenantId}:`, error);
@@ -305,5 +306,27 @@ async function checkStaleCashDrawers(firestore: admin.firestore.Firestore, tenan
             'alert'
         );
         await addAuditLog(firestore, tenantId, 'staleCashDrawer', { cashRegisterId: doc.id, cashierName: drawer.cashierName });
+    }
+}
+
+/**
+ * Checks for a high number of failed payments in the last hour.
+ */
+async function checkFailedPayments(firestore: admin.firestore.Firestore, tenantId: string, createNotification: Function) {
+    const oneHourAgo = Timestamp.fromMillis(Date.now() - 60 * 60 * 1000);
+    const failedPaymentsSnapshot = await firestore.collection(`tenants/${tenantId}/payments`)
+        .where('status', '==', 'failed')
+        .where('timestamp', '>=', oneHourAgo)
+        .get();
+        
+    const failedPaymentsThreshold = 3;
+
+    if (failedPaymentsSnapshot.size > failedPaymentsThreshold) {
+        await createNotification(
+            'Multiple Payment Failures ⚠️',
+            `${failedPaymentsSnapshot.size} failed payments detected within the last hour.`,
+            'alert'
+        );
+        await addAuditLog(firestore, tenantId, 'multiplePaymentFailures', { failureCount: failedPaymentsSnapshot.size });
     }
 }
