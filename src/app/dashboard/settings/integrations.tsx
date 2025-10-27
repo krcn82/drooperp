@@ -36,6 +36,7 @@ export default function IntegrationsSettings() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [selectedPlatform, setSelectedPlatform] = useState<PlatformId | null>(null);
     const [apiKey, setApiKey] = useState('');
+    const [openDialog, setOpenDialog] = useState(false);
 
     useEffect(() => {
         const storedTenantId = localStorage.getItem('tenantId');
@@ -64,6 +65,7 @@ export default function IntegrationsSettings() {
         const result = await connectIntegration(tenantId, selectedPlatform, apiKey);
         if (result.success) {
             toast({ title: 'Integration Connected', description: `Successfully connected to ${selectedPlatform}.` });
+            setOpenDialog(false);
             setSelectedPlatform(null);
             setApiKey('');
         } else {
@@ -82,6 +84,11 @@ export default function IntegrationsSettings() {
         }
     };
     
+    const openConnectDialog = (platformId: PlatformId) => {
+        setSelectedPlatform(platformId);
+        setOpenDialog(true);
+    };
+
     return (
         <Card>
             <CardHeader>
@@ -125,13 +132,9 @@ export default function IntegrationsSettings() {
                                             </Button>
                                         </>
                                     ) : (
-                                        <Dialog onOpenChange={(open) => !open && setSelectedPlatform(null)}>
-                                            <DialogTrigger asChild>
-                                                <Button size="sm" onClick={() => setSelectedPlatform(platform.id)}>
-                                                    <LinkIcon className="mr-2 h-4 w-4"/> Connect
-                                                </Button>
-                                            </DialogTrigger>
-                                        </Dialog>
+                                        <Button size="sm" onClick={() => openConnectDialog(platform.id)}>
+                                            <LinkIcon className="mr-2 h-4 w-4"/> Connect
+                                        </Button>
                                     )}
                                 </CardFooter>
                             </Card>
@@ -140,29 +143,29 @@ export default function IntegrationsSettings() {
                 )}
             </CardContent>
             
-            <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>Connect to {selectedPlatform}</DialogTitle>
-                    <DialogDescription>
-                        Enter your API key to connect your account. This key will be stored securely.
-                    </DialogDescription>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                    <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="api-key" className="text-right">API Key</Label>
-                        <Input id="api-key" value={apiKey} onChange={(e) => setApiKey(e.target.value)} className="col-span-3" />
+            <Dialog open={openDialog} onOpenChange={setOpenDialog}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Connect to {selectedPlatform}</DialogTitle>
+                        <DialogDescription>
+                            Enter your API key to connect your account. This key will be stored securely.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="api-key" className="text-right">API Key</Label>
+                            <Input id="api-key" value={apiKey} onChange={(e) => setApiKey(e.target.value)} className="col-span-3" />
+                        </div>
                     </div>
-                </div>
-                <DialogFooter>
-                    <Button variant="ghost" onClick={() => setSelectedPlatform(null)}>Cancel</Button>
-                    <Button onClick={handleConnect} disabled={isSubmitting || !apiKey}>
-                        {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        Connect
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
+                    <DialogFooter>
+                        <Button variant="ghost" onClick={() => setOpenDialog(false)}>Cancel</Button>
+                        <Button onClick={handleConnect} disabled={isSubmitting || !apiKey}>
+                            {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Connect
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </Card>
     );
 }
-
-    
