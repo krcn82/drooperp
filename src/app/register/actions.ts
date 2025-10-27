@@ -26,7 +26,7 @@ type State = {
 
 // Sanitize tenant name to create a valid Firestore document ID
 const sanitizeTenantId = (name: string) => {
-  return name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+  return name.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
 };
 
 export async function registerTenant(prevState: State, formData: FormData): Promise<State> {
@@ -48,7 +48,7 @@ export async function registerTenant(prevState: State, formData: FormData): Prom
     // 1. Create the user with Firebase Auth first
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     user = userCredential.user;
-    await updateProfile(user, { displayName: tenantName });
+    await updateProfile(user, { displayName: tenantName.trim() });
   } catch (error: any) {
     if (error instanceof FirebaseError) {
       if (error.code === 'auth/email-already-in-use') {
@@ -64,7 +64,7 @@ export async function registerTenant(prevState: State, formData: FormData): Prom
   // 2. Create the tenant document
   const tenantRef = doc(firestore, 'tenants', tenantId);
   const tenantData = {
-    name: tenantName,
+    name: tenantName.trim(),
     createdAt: serverTimestamp(),
     ownerEmail: email,
     plan: 'Free',

@@ -66,8 +66,9 @@ export default function LoginPage() {
   }, [auth, firestore, router]);
 
   const onSubmit = async (values: LoginFormValues) => {
+    const trimmedTenantId = values.tenantId.trim();
     // Store tenantId in localStorage to make it available across the app
-    localStorage.setItem('tenantId', values.tenantId);
+    localStorage.setItem('tenantId', trimmedTenantId);
 
     try {
       await initiateEmailSignIn(auth, values.email, values.password);
