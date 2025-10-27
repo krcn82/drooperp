@@ -16,25 +16,13 @@ const sanitizeTenantId = (name: string) => {
  * Creates a new tenant document and associated user records.
  * This should only be callable by an authenticated user.
  */
-export async function createNewTenant(tenantName: string): Promise<{ success: boolean; message: string }> {
-  // On the server, we need to get the user from the session cookie
-  const cookieStore = cookies();
-  const sessionCookie = cookieStore.get('session')?.value;
-  if (!sessionCookie) {
-    return { success: false, message: 'User is not authenticated.' };
-  }
-  
-  let decodedToken;
-  try {
-    decodedToken = await adminAuth().verifySessionCookie(sessionCookie, true);
-  } catch (error) {
-    return { success: false, message: 'Invalid session. Please log in again.' };
-  }
-  
-  const user = { uid: decodedToken.uid, email: decodedToken.email };
-  if (!user || !user.uid || !user.email) {
-    return { success: false, message: 'Could not verify user identity.' };
-  }
+export async function createNewTenant(
+    tenantName: string, 
+    user: { uid: string; email: string | null }
+): Promise<{ success: boolean; message: string }> {
+    if (!user || !user.uid || !user.email) {
+        return { success: false, message: 'Could not verify user identity.' };
+    }
   
   const { firestore } = initializeFirebase();
 

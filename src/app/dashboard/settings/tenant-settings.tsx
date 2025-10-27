@@ -68,7 +68,7 @@ export default function TenantSettings() {
     }
     
     setIsSubmitting(true);
-    const result = await createNewTenant(newTenantName);
+    const result = await createNewTenant(newTenantName, { uid: user.uid, email: user.email });
     
     if (result.success) {
       toast({ title: 'Success', description: `Tenant '${newTenantName}' created successfully.` });
