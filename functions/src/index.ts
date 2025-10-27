@@ -15,3 +15,4 @@ export * from './aiAutomationWorker';
 export * from './generateReport';
 export * from './webhooks';
 export * from './syncIntegrationOrders';
+export * from './syncMenu';
