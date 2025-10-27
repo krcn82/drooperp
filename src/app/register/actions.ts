@@ -9,7 +9,7 @@ import { redirect } from 'next/navigation';
 
 const formSchema = z
   .object({
-    tenantName: z.string().min(3, 'Tenant name must be at least 3 characters long'),
+    tenantName: z.string().trim().min(3, 'Tenant name must be at least 3 characters long'),
     email: z.string().email('Invalid email address'),
     password: z.string().min(6, 'Password must be at least 6 characters long'),
     confirmPassword: z.string(),
@@ -67,6 +67,7 @@ export async function registerTenant(prevState: State, formData: FormData): Prom
     name: tenantName.trim(),
     createdAt: serverTimestamp(),
     ownerEmail: email,
+    ownerUid: user.uid,
     plan: 'Free',
     status: 'active',
   };
@@ -80,7 +81,7 @@ export async function registerTenant(prevState: State, formData: FormData): Prom
     email: user.email,
     firstName: '',
     lastName: '',
-    roles: ['admin'],
+    role: 'admin',
     tenantId: tenantId,
   };
   setDocumentNonBlocking(userRef, userData, {});

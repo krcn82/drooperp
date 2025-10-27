@@ -41,7 +41,7 @@ export const generateReport = functions.https.onCall(async (data, context) => {
   
   // Admin Check: Verify the user has the 'admin' role for this tenant.
   const userDoc = await firestore.doc(`tenants/${tenantId}/users/${uid}`).get();
-  if (!userDoc.exists || !userDoc.data()?.roles.includes('admin')) {
+  if (!userDoc.exists || userDoc.data()?.role !== 'admin') {
       throw new functions.https.HttpsError('permission-denied', 'You must be an admin to generate reports.');
   }
 

@@ -31,18 +31,17 @@
           "type": "string",
           "description": "Reference to Subscription. (Relationship: Subscription 1:N User)"
         },
-        "roles": {
-          "type": "array",
-          "description": "User's roles",
-          "items": {
-            "type": "string"
-          }
+        "role": {
+          "type": "string",
+          "description": "User's role",
+          "enum": ["admin", "cashier", "viewer"]
         }
       },
       "required": [
         "id",
         "tenantId",
-        "email"
+        "email",
+        "role"
       ]
     },
     "Tenant": {
@@ -650,5 +649,3 @@
     }
   }
 }
-
-    
