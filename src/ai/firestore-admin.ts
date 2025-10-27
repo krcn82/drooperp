@@ -8,11 +8,11 @@ import * as admin from 'firebase-admin';
 
 // Prevent re-initialization in hot-reload environments
 if (!admin.apps.length) {
-  // Use environment variables for secure initialization
-  admin.initializeApp({
-    // projectId and other credentials will be picked up from the environment
-    // where the Genkit flow is running (e.g., Google Cloud Functions).
-  });
+  // Use environment variables for secure initialization.
+  // Calling initializeApp() without arguments allows it to automatically
+  // use GOOGLE_APPLICATION_CREDENTIALS in a local environment
+  // and the Application Default Credentials in a deployed environment.
+  admin.initializeApp();
 }
 
 const firestoreAdmin = admin.firestore();
