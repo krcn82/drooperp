@@ -16,16 +16,22 @@ export const generateDatevExport = functions.https.onCall(async (data, context) 
   const uid = context.auth?.uid;
 
   if (!uid) {
-    throw new functions.https.HttpsError('unauthenticated', 'The function must be called while authenticated.');
+    throw new functions.h_ops.HttpsError('unauthenticated', 'The function must be called while authenticated.');
   }
   
   if (!tenantId) {
-    throw new functions.https.HttpsError('invalid-argument', 'Missing required data: tenantId.');
+    throw new functions.h_ops.HttpsError('invalid-argument', 'Missing required data: tenantId.');
   }
 
-  // In a real implementation, you would also check if the user has permission to access this tenant's data.
-
   const firestore = admin.firestore();
+
+  // Admin Check: Verify the user has the 'admin' role for this tenant.
+  const userDoc = await firestore.doc(`tenants/${tenantId}/users/${uid}`).get();
+  if (!userDoc.exists || userDoc.data()?.role !== 'admin') {
+      throw new functions.h_ops.HttpsError('permission-denied', 'You must be an admin to generate a DATEV export.');
+  }
+
+
   const transactionsSnapshot = await firestore.collection(`tenants/${tenantId}/transactions`).get();
 
   if (transactionsSnapshot.empty) {
