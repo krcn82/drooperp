@@ -50,13 +50,12 @@ export default function LoginPage() {
   
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        const tenantId = localStorage.getItem('tenantId');
-        if (tenantId) {
-          // This routes the user to their tenant-specific dashboard
+        const storedTenantId = localStorage.getItem('tenantId');
+        if (storedTenantId) {
+          const tenantId = storedTenantId.trim();
+          localStorage.setItem('tenantId', tenantId); // Ensure it's clean for the next load
           router.push(`/dashboard`);
         } else {
-          // If tenantId is not in localStorage, maybe get it from user's profile
-          // and then route. For now, we redirect to a generic dashboard.
           router.push('/dashboard');
         }
       }

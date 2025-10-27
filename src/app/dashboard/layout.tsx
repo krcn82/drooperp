@@ -64,7 +64,10 @@ export default function DashboardLayout({children}: {children: React.ReactNode})
   useEffect(() => {
       const storedTenantId = localStorage.getItem('tenantId');
       if (storedTenantId) {
-          setTenantId(storedTenantId);
+          const trimmedId = storedTenantId.trim();
+          setTenantId(trimmedId);
+          // Also update localStorage to be clean for next time
+          localStorage.setItem('tenantId', trimmedId);
       } else if (user && !isUserLoading) {
           router.push('/login'); // Or a tenant selection page
       }
