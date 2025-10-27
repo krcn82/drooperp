@@ -34,15 +34,15 @@ export const generateReport = functions.https.onCall(async (data, context) => {
   }
 
   if (!tenantId || !range) {
-    throw new functions.h_ops.HttpsError('invalid-argument', 'Missing required data: tenantId or range.');
+    throw new functions.https.HttpsError('invalid-argument', 'Missing required data: tenantId or range.');
   }
 
   const firestore = admin.firestore();
   
   // Admin Check: Verify the user has the 'admin' role for this tenant.
   const userDoc = await firestore.doc(`tenants/${tenantId}/users/${uid}`).get();
-  if (!userDoc.exists || userDoc.data()?.role !== 'admin') {
-      throw new functions.h_ops.HttpsError('permission-denied', 'You must be an admin to generate reports.');
+  if (!userDoc.exists || !userDoc.data()?.roles.includes('admin')) {
+      throw new functions.https.HttpsError('permission-denied', 'You must be an admin to generate reports.');
   }
 
   // Determine date range
