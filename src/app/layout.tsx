@@ -1,4 +1,3 @@
-'use client';
 
 import type {Metadata} from 'next';
 import {Inter, Space_Grotesk} from 'next/font/google';
@@ -18,12 +17,10 @@ const fontHeadline = Space_Grotesk({
   variable: '--font-headline',
 });
 
-// This can't be a metadata export.
-// See: https://nextjs.org/docs/app/api-reference/file-conventions/metadata#unsupported-metadata
-// export const metadata: Metadata = {
-//   title: 'Droop ERP',
-//   description: 'A complete scalable ERP system built with Firebase.',
-// };
+export const metadata: Metadata = {
+  title: 'Droop ERP',
+  description: 'A complete scalable ERP system built with Firebase.',
+};
 
 export default function RootLayout({
   children,
