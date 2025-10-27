@@ -29,12 +29,7 @@ export const startDevicePayment = functions.https.onCall(async (data, context) =
       throw new functions.https.HttpsError('not-found', 'Payment bridge URL is not configured for this tenant.');
     }
 
-    // 2. Construct callback URL for the bridge to report back to
-    const region = process.env.FUNCTION_REGION || 'us-central1';
-    const projectId = process.env.GCLOUD_PROJECT;
-    const callbackUrl = `https://${region}-${projectId}.cloudfunctions.net/paymentDeviceCallback`;
-
-    // 3. Send command to the local payment bridge, including the auth token
+    // 2. Send command to the local payment bridge, including the auth token
     const response = await fetch(`${paymentBridgeUrl}/api/payment/device/start`, {
       method: 'POST',
       headers: { 
@@ -46,7 +41,6 @@ export const startDevicePayment = functions.https.onCall(async (data, context) =
         transactionId,
         paymentId,
         amount,
-        callbackUrl
       }),
       timeout: 5000, // 5 second timeout for local network call
     });
@@ -166,5 +160,3 @@ export const paymentDeviceCallback = functions.https.onRequest(async (req, res) 
         res.status(500).send('Internal Server Error');
     }
 });
-
-    

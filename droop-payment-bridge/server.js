@@ -87,9 +87,9 @@ app.use('/api', authMiddleware);
  * This is called by the main ERP's Cloud Function.
  */
 app.post('/api/payment/device/start', async (req, res) => {
-  const { tenantId, transactionId, paymentId, amount, callbackUrl } = req.body;
+  const { tenantId, transactionId, paymentId, amount } = req.body;
 
-  if (!tenantId || !transactionId || !paymentId || !amount || !callbackUrl) {
+  if (!tenantId || !transactionId || !paymentId || !amount) {
     logger.warn('Received invalid payment request', { body: req.body });
     return res.status(400).json({ error: 'Missing required payment parameters.' });
   }
@@ -103,8 +103,7 @@ app.post('/api/payment/device/start', async (req, res) => {
       amount,
       transactionId,
       tenantId,
-      paymentId,
-      callbackUrl
+      paymentId
     });
 
     // Immediately respond to the cloud function that the process has started.

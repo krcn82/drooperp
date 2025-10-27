@@ -15,10 +15,9 @@ const { sendCallback } = require('./firebaseClient');
  * @param {string} paymentData.transactionId - The ERP's transaction ID.
  * @param {string} paymentData.tenantId - The tenant ID.
  * @param {string} paymentData.paymentId - The ERP's payment ID.
- * @param {string} paymentData.callbackUrl - The URL to call upon completion.
  */
 async function startPaymentOnDevice(paymentData) {
-  const { amount, transactionId, tenantId, paymentId, callbackUrl } = paymentData;
+  const { amount, transactionId, tenantId, paymentId } = paymentData;
   const terminalIp = process.env.TERMINAL_IP || "192.168.1.50";
   const terminalPort = process.env.TERMINAL_PORT || 20007;
 
@@ -54,7 +53,6 @@ async function startPaymentOnDevice(paymentData) {
     paymentId,
     status,
     deviceResponse,
-    callbackUrl
   });
 }
 

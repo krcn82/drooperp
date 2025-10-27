@@ -9,9 +9,15 @@ const fetch = require('node-fetch');
  * @param {string} callbackData.paymentId - The ERP's payment ID.
  * @param {'completed' | 'failed'} callbackData.status - The final status of the payment.
  * @param {object} callbackData.deviceResponse - The raw response from the payment terminal.
- * @param {string} callbackData.callbackUrl - The specific URL to send the callback to.
  */
-async function sendCallback({ tenantId, paymentId, status, deviceResponse, callbackUrl }) {
+async function sendCallback({ tenantId, paymentId, status, deviceResponse }) {
+  const callbackUrl = process.env.FIREBASE_CALLBACK_URL;
+  
+  if (!callbackUrl) {
+    console.error('❌ FIREBASE_CALLBACK_URL is not set in the .env file.');
+    return;
+  }
+
   console.log(`📡 Sending payment result to Firebase for paymentId ${paymentId}`);
 
   try {
