@@ -12,7 +12,7 @@ const fetch = require('node-fetch');
  * @param {string} callbackData.callbackUrl - The specific URL to send the callback to.
  */
 async function sendCallback({ tenantId, paymentId, status, deviceResponse, callbackUrl }) {
-  console.log(`Sending callback to: ${callbackUrl} for paymentId: ${paymentId}`);
+  console.log(`📡 Sending payment result to Firebase for paymentId ${paymentId}`);
 
   try {
     const response = await fetch(callbackUrl, {
@@ -31,14 +31,14 @@ async function sendCallback({ tenantId, paymentId, status, deviceResponse, callb
 
     if (!response.ok) {
       const errorBody = await response.text();
-      throw new Error(`Callback failed with status ${response.status}: ${errorBody}`);
+      throw new Error(`Callback to ERP failed with status ${response.status}: ${errorBody}`);
     }
 
-    console.log(`Successfully sent callback for paymentId: ${paymentId}`);
+    console.log(`✅ Successfully sent callback for paymentId: ${paymentId}`);
     return await response.json();
 
   } catch (error) {
-    console.error('Error sending callback to Firebase function:', error.message);
+    console.error('❌ Error sending callback to Firebase function:', error.message);
     // In a real app, you would add retry logic here with exponential backoff.
     throw error;
   }
