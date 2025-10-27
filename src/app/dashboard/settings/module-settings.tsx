@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { useFirestore, useDoc, useMemoFirebase } from '@/firebase';
 import { doc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, AlertCircle, ShoppingCart, CookingPot, Calendar, Contact, Bot } from 'lucide-react';
+import { Loader2, AlertCircle, ShoppingCart, CookingPot, Calendar, Contact, Bot, Utensils } from 'lucide-react';
 import { Tenant } from './tenant-settings';
 import { updateModuleSettings } from './tenant-actions';
 import { planLimits, PlanId } from '@/lib/plans';
