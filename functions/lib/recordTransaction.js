@@ -35,17 +35,16 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.recordTransaction = void 0;
 const admin = __importStar(require("firebase-admin"));
-const functions = __importStar(require("firebase-functions"));
+const https_1 = require("firebase-functions/v2/https");
+const https_2 = require("firebase-functions/v2/https");
 const rksvSignature_1 = require("./pos/rksvSignature");
 if (!admin.apps.length) {
     admin.initializeApp();
 }
-exports.recordTransaction = functions
-    .region("us-central1")
-    .https.onCall(async (data, context) => {
-    const { tenantId, transaction } = data;
+exports.recordTransaction = (0, https_1.onCall)({ region: "us-central1" }, async (request) => {
+    const { tenantId, transaction } = request.data;
     if (!tenantId || !transaction) {
-        throw new functions.https.HttpsError("invalid-argument", "tenantId and transaction are required.");
+        throw new https_2.HttpsError("invalid-argument", "tenantId and transaction are required.");
     }
     const db = admin.firestore();
     const tenantRef = db.collection("tenants").doc(tenantId);

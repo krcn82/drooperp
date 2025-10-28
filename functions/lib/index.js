@@ -36,7 +36,7 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
     for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendDailySystemReport = exports.onNotificationCreate = exports.syncMenuWithPlatform = exports.syncIntegrationOrders = exports.integrationWebhook = exports.syncOfflineTransactions = exports.recordTransaction = exports.onKdsOrderUpdate = exports.updateKdsOrderStatus = exports.createKdsOrder = exports.paymentDeviceCallback = exports.startDevicePayment = exports.stripeWebhook = exports.processStripePayment = exports.generateReport = exports.generateDatevExport = exports.automationWorker = exports.aiAutomationWorker = void 0;
+exports.generateZReport = exports.sendDailySystemReport = exports.onNotificationCreate = exports.syncMenuWithPlatform = exports.syncIntegrationOrders = exports.integrationWebhook = exports.syncOfflineTransactions = exports.recordTransaction = exports.onKdsOrderUpdate = exports.updateKdsOrderStatus = exports.createKdsOrder = exports.paymentDeviceCallback = exports.startDevicePayment = exports.stripeWebhook = exports.processStripePayment = exports.generateReport = exports.generateDatevExport = exports.automationWorker = exports.aiAutomationWorker = void 0;
 /**
  * Initializes Firebase Admin SDK and exports all Cloud Functions.
  * This file acts as the main entry point for deploying functions.
@@ -88,4 +88,6 @@ Object.defineProperty(exports, "sendDailySystemReport", { enumerable: true, get:
 // export { logFunctionExecution } from './functions-monitor';
 // export { sendEmailNotification } from './email-notifications';
 __exportStar(require("./pos"), exports);
+var generateZReport_1 = require("./pos/generateZReport");
+Object.defineProperty(exports, "generateZReport", { enumerable: true, get: function () { return generateZReport_1.generateZReport; } });
 //# sourceMappingURL=index.js.map

@@ -1,111 +1,65 @@
 
-import { HttpsError, onCall } from "firebase-functions/v2/https";
-import * as admin from 'firebase-admin';
+import * as admin from "firebase-admin";
+import { onSchedule } from "firebase-functions/v2/scheduler";
+import { generateRKSVSignature } from "./rksvSignature";
 
-/**
- * Generates a Z-Report for a given cash register session.
- * Calculates totals and updates the cash register document.
- */
-export const generateZReport = onCall(async (request) => {
-  const { tenantId, cashRegisterId } = request.data;
-  const uid = request.auth?.uid;
+export const generateZReport = onSchedule(
+  {
+    schedule: "0 23 * * *",
+    timeZone: "Europe/Vienna",
+  },
+  async (event) => {
+    const db = admin.firestore();
+    const tenantsSnap = await db.collection("tenants").get();
 
-  if (!uid) {
-    throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
-  }
-  if (!tenantId || !cashRegisterId) {
-    throw new HttpsError('invalid-argument', 'Missing required data: tenantId or cashRegisterId.');
-  }
+    for (const tenant of tenantsSnap.docs) {
+      const tenantId = tenant.id;
+      const transactionsRef = db.collection(`tenants/${tenantId}/transactions`);
+      const zReportsRef = db.collection(`tenants/${tenantId}/zReports`);
 
-  const firestore = admin.firestore();
-  const registerRef = firestore.doc(`tenants/${tenantId}/cashRegisters/${cashRegisterId}`);
-  
-  try {
-    const registerDoc = await registerRef.get();
-    if (!registerDoc.exists) {
-      throw new HttpsError('not-found', 'Cash register session not found.');
-    }
-    const registerData = registerDoc.data()!;
+      // 📦 Get transactions for the day
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date();
+      endOfDay.setHours(23, 59, 59, 999);
 
-    // 1. Find all payments for this cash register session
-    const paymentsSnapshot = await firestore.collection(`tenants/${tenantId}/payments`)
-        .where('cashRegisterId', '==', cashRegisterId)
-        .where('status', '==', 'completed')
+      const transactionsSnap = await transactionsRef
+        .where("createdAt", ">=", startOfDay)
+        .where("createdAt", "<=", endOfDay)
         .get();
 
-    if (paymentsSnapshot.empty) {
-        // No payments, just close the register
-        await registerRef.update({
-            status: 'closed',
-            closedAt: admin.firestore.FieldValue.serverTimestamp(),
-            closingBalance: registerData.openingBalance,
-            totalSales: 0,
-            totalCashSales: 0,
-        });
-        return { success: true, message: 'Session closed. No transactions were made.' };
-    }
-    
-    // 2. Calculate totals
-    let totalSales = 0;
-    let totalCashSales = 0;
-    const paymentMethodBreakdown: { [key: string]: { count: number, total: number } } = {};
-
-    paymentsSnapshot.forEach(doc => {
-      const payment = doc.data();
-      totalSales += payment.amount;
-      
-      if (payment.method === 'cash') {
-        totalCashSales += payment.amount;
+      if (transactionsSnap.empty) {
+        console.info(`No transactions found for ${tenantId} on ${startOfDay.toDateString()}`);
+        continue;
       }
 
-      if (paymentMethodBreakdown[payment.method]) {
-        paymentMethodBreakdown[payment.method].count++;
-        paymentMethodBreakdown[payment.method].total += payment.amount;
-      } else {
-        paymentMethodBreakdown[payment.method] = { count: 1, total: payment.amount };
-      }
-    });
+      // 💰 Calculate total amount
+      let totalAmount = 0;
+      transactionsSnap.forEach((doc) => {
+        totalAmount += doc.data().totalAmount || 0;
+      });
 
-    const closingBalance = registerData.openingBalance + totalCashSales;
+      // 🔐 Create end-of-day summary hash
+      const summaryData = {
+        date: startOfDay.toISOString().split("T")[0],
+        totalTransactions: transactionsSnap.size,
+        totalAmount,
+      };
 
-    // 3. Update the cash register document
-    await registerRef.update({
-      status: 'closed',
-      closedAt: admin.firestore.FieldValue.serverTimestamp(),
-      closedBy: uid,
-      totalSales,
-      totalCashSales,
-      paymentMethodBreakdown,
-      closingBalance,
-    });
-    
-    // 4. (STUB) Generate and store the report
-    const reportData = {
-        cashRegisterId,
-        ...registerData,
-        closedBy: uid,
-        totalSales,
-        totalCashSales,
-        paymentMethodBreakdown,
-        closingBalance,
-    };
-    
-    await firestore.collection(`tenants/${tenantId}/reports`).add({
-        type: 'z-report',
-        generatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        data: reportData,
-        // In a real app, you'd generate a PDF and store the URL here.
-        fileUrl: null, 
-    });
+      const { currentHash, signature } = await generateRKSVSignature(tenantId, summaryData);
 
+      // 🧾 Save to Firestore
+      await zReportsRef.add({
+        ...summaryData,
+        rksvHash: currentHash,
+        rksvSignature: signature,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
 
-    return { success: true, message: 'Z-Report generated successfully.' };
-
-  } catch (error: any) {
-    console.error('Error generating Z-Report:', error);
-    if (error instanceof HttpsError) {
-        throw error;
+      console.info(`✅ Z-Report generated for tenant ${tenantId} (${transactionsSnap.size} transactions)`);
     }
-    throw new HttpsError('internal', 'An unexpected error occurred.', error.message);
+
+    console.info("🎯 Daily RKSV Z-Reports successfully generated.");
+    return null;
   }
-});
+);
