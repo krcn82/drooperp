@@ -11,7 +11,6 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Loader2, Landmark, CreditCard, Wallet, MonitorSmartphone } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import { processPayment } from '@/app/dashboard/pos/actions';
 import { useToast } from '@/hooks/use-toast';
 import { useCashDrawer } from '@/hooks/use-cash-drawer';
@@ -42,13 +41,10 @@ export default function PaymentDialog({
   transactionId,
   onPaymentSuccess,
 }: PaymentDialogProps) {
-  const [view, setView] = useState<'select' | 'cash' | 'terminal' | 'stripe'>('select');
-  const [cashReceived, setCashReceived] = useState('');
+  const [view, setView] = useState<'select' | 'terminal' | 'stripe'>('select');
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   const { id: cashRegisterId } = useCashDrawer();
-
-  const change = (parseFloat(cashReceived) || 0) - total;
 
   const handleMethodSelect = async (method: PaymentMethod) => {
     setIsLoading(true);
@@ -63,8 +59,6 @@ export default function PaymentDialog({
 
     switch (method) {
       case 'cash':
-        // For cash, the processPayment function already marks it as complete.
-        // We can just proceed to success.
         toast({ title: 'Payment Successful', description: 'Cash payment recorded.' });
         onPaymentSuccess(result.qrCode || 'cash-qr-placeholder');
         resetState();
@@ -73,19 +67,17 @@ export default function PaymentDialog({
       case 'bankomat':
         setView('terminal');
         toast({ title: 'Device Notified', description: 'Please complete payment on the terminal.' });
-        // The UI will now show a waiting state. The actual success is handled by a webhook
-        // that updates the payment status. The POS should listen for this change.
-        // For now, we simulate success after a delay for UI demonstration.
+        // For demonstration, we'll simulate a delay then success.
+        // A real implementation would listen for a webhook or Firestore update.
         setTimeout(() => {
            onPaymentSuccess('terminal-payment-placeholder-qr');
            resetState();
-        }, 8000); // 8 second mock wait
+        }, 8000);
         break;
       case 'stripe':
         setView('stripe');
         toast({ title: 'Stripe Initialized', description: 'Complete payment in the Stripe UI.' });
         // In a real app, you would use result.clientSecret with Stripe.js here.
-        // We'll simulate success after a delay.
         setTimeout(() => {
           onPaymentSuccess('stripe-payment-successful-qr-placeholder');
           resetState();
@@ -96,7 +88,6 @@ export default function PaymentDialog({
 
   const resetState = () => {
     setView('select');
-    setCashReceived('');
     setIsLoading(false);
     onOpenChange(false);
   };
@@ -104,7 +95,6 @@ export default function PaymentDialog({
   const handleClose = () => {
     if (!isLoading) {
       setView('select');
-      setCashReceived('');
       onOpenChange(false);
     }
   };
@@ -157,7 +147,7 @@ export default function PaymentDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Select Payment Method</DialogTitle>
-          <DialogDescription>Total Amount: ${total.toFixed(2)}</DialogDescription>
+          <DialogDescription>Total Amount: €{total.toFixed(2)}</DialogDescription>
         </DialogHeader>
         <div className="py-4">{renderContent()}</div>
       </DialogContent>

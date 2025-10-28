@@ -39,6 +39,8 @@ const useCashDrawerStore = create<CashDrawerState>()(
           status: 'open' as const,
           openedAt: serverTimestamp(),
           closedAt: null,
+          totalSales: 0,
+          totalCashSales: 0,
         };
 
         const cashRegistersRef = collection(firestore, `tenants/${tenantId}/cashRegisters`);
@@ -59,7 +61,6 @@ const useCashDrawerStore = create<CashDrawerState>()(
 
 export const useCashDrawer = useCashDrawerStore;
 
-// A provider component is not strictly necessary with this setup but can be useful for clarity
 import { ReactNode } from 'react';
 
 export const CashDrawerProvider = ({ children }: { children: ReactNode }) => {

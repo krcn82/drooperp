@@ -4,7 +4,7 @@ import CartPanel from "./components/CartPanel";
 import ProductGrid from "./components/ProductGrid";
 import ModeSwitcher from "./components/ModeSwitcher";
 import TableMap from "./components/TableMap";
-import { Product, CartItem } from "./types";
+import { type Product, type CartItem } from "./types";
 import { translations } from '@/lib/pos-translations';
 import { useCashDrawer } from '@/hooks/use-cash-drawer';
 import CashDrawerDialog from '@/components/pos/CashDrawerDialog';
@@ -95,6 +95,7 @@ export default function POSPage() {
     setQrCodeData(qrData);
     clearCart();
     setActiveTransactionId(null);
+    setPaymentDialogOpen(false);
   };
 
   if (qrCodeData) {

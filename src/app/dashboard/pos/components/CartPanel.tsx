@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState } from 'react';
@@ -6,8 +5,8 @@ import { translations } from '@/lib/pos-translations';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Trash2, UserPlus, FileText } from 'lucide-react';
-import { type CartItem } from '../page';
+import { Trash2 } from 'lucide-react';
+import { type CartItem } from '../types';
 import { recordTransaction } from '../actions';
 import { useUser } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
@@ -67,7 +66,7 @@ export default function CartPanel({ cart, language, removeFromCart, clearCart, o
         items: cart.map(item => ({ name: item.name.en, qty: item.quantity, price: item.price, productId: item.id })),
         cashierUserId: user.uid,
         amountTotal: total,
-        type: 'shop' as const,
+        type: 'retail' as const, // Hardcoded for now, should be dynamic with restaurant mode
     };
     
     const result = await recordTransaction(tenantId, transactionData);
@@ -98,7 +97,7 @@ export default function CartPanel({ cart, language, removeFromCart, clearCart, o
       <ScrollArea className="flex-1">
         <div className="p-4 space-y-4">
           {cart.length === 0 ? (
-            <p className="text-muted-foreground text-center py-10">{t.cart} is empty.</p>
+            <p className="text-muted-foreground text-center py-10">{t.cart} ist leer.</p>
           ) : (
             cart.map(item => (
               <div key={item.cartId} className="flex items-center gap-4">

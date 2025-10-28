@@ -15,19 +15,16 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Landmark, LogOut, Check } from 'lucide-react';
 import { useCashDrawer } from '@/hooks/use-cash-drawer';
-import { useUser } from '@/firebase';
+import { useUser, useFirebaseApp } from '@/firebase';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { useFirebaseApp } from '@/firebase';
 
 export default function CashDrawerDialog() {
   const { user } = useUser();
   const firebaseApp = useFirebaseApp();
   const { toast } = useToast();
-  const { isDialogOpen, closeDrawerDialog, openNewSession, closeCurrentSession } = useCashDrawer();
-  const { isOpen, id: cashRegisterId } = useCashDrawer();
+  const { isDialogOpen, closeDrawerDialog, openNewSession, closeCurrentSession, isOpen, id: cashRegisterId } = useCashDrawer();
 
   const [openingBalance, setOpeningBalance] = useState('');
-  const [closingBalance, setClosingBalance] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleOpenSession = async () => {
@@ -72,7 +69,6 @@ export default function CashDrawerDialog() {
     }
 
     setIsSubmitting(false);
-    setClosingBalance('');
     closeDrawerDialog();
   };
 

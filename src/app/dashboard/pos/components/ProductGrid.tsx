@@ -1,9 +1,8 @@
-
 'use client';
 
 import React from 'react';
 import Image from 'next/image';
-import { type Product } from '../page';
+import { type Product } from '../types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
