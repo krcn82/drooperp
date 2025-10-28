@@ -6,6 +6,7 @@ import { generateZReport } from "./generateZReport";
 import { processStripePayment } from "./stripe";
 import { createFinanzOnlineExport } from "./createFinanzOnlineExport";
 import { submitDEPToFinanzOnline } from "./submitFinanzOnline";
+import { logFinanzOnlineTransmission } from "./logFinanzOnline";
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -18,5 +19,6 @@ export {
   generateZReport,
   processStripePayment,
   createFinanzOnlineExport,
-  submitDEPToFinanzOnline
+  submitDEPToFinanzOnline,
+  logFinanzOnlineTransmission,
 };
