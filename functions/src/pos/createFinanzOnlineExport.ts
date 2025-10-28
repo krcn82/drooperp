@@ -79,5 +79,5 @@ export const createFinanzOnlineExport = onCall(async (request) => {
         expires: Date.now() + 15 * 60 * 1000, // 15 minutes
     });
 
-    return { success: true, downloadUrl: url };
+    return { success: true, downloadUrl: url, xml: xmlString };
 });
