@@ -3,6 +3,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import { translations } from "@/lib/pos-translations";
 
 interface Product {
   id: string;
@@ -15,6 +16,8 @@ interface Product {
 export default function POSPage() {
   const [language, setLanguage] = useState<"de" | "en">("de");
   const [cart, setCart] = useState<Product[]>([]);
+
+  const t = translations[language];
 
   const products: Product[] = [
     {
@@ -57,13 +60,11 @@ export default function POSPage() {
       {/* 🧾 Left: Cart */}
       <div className="col-span-4 bg-white border-r p-6 flex flex-col">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold">
-            {language === "de" ? "Warenkorb" : "Cart"}
-          </h2>
+          <h2 className="text-xl font-bold">{t.cart}</h2>
           <select
             className="border rounded px-2 py-1"
             value={language}
-            onChange={(e) => setLanguage(e.target.value as any)}
+            onChange={(e) => setLanguage(e.target.value as "de" | "en")}
           >
             <option value="de">Deutsch</option>
             <option value="en">English</option>
@@ -92,23 +93,21 @@ export default function POSPage() {
 
         <div className="mt-4 border-t pt-4">
           <div className="flex justify-between font-bold text-lg">
-            <span>{language === "de" ? "Gesamt" : "Total"}</span>
+            <span>{t.total}</span>
             <span>€ {total.toFixed(2)}</span>
           </div>
           <button
             className="w-full mt-4 bg-green-600 text-white py-2 rounded hover:bg-green-700"
             onClick={() => alert("Payment Flow (coming soon)")}
           >
-            💳 {language === "de" ? "Bezahlen" : "Pay"}
+            💳 {t.pay}
           </button>
         </div>
       </div>
 
       {/* 🪑 Right: Products */}
       <div className="col-span-8 bg-gray-50 p-6 overflow-auto">
-        <h2 className="text-xl font-bold mb-4">
-          {language === "de" ? "Produkte" : "Products"}
-        </h2>
+        <h2 className="text-xl font-bold mb-4">{t.products}</h2>
         <div className="grid grid-cols-3 gap-4">
           {products.map((p) => (
             <div
