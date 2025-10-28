@@ -380,6 +380,71 @@
         "lastSignature"
       ]
     },
+    "RKSVConfig": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "RKSV Config",
+      "type": "object",
+      "description": "Stores the fiscal certificate and credentials for RKSV compliance.",
+      "properties": {
+        "kassenId": {
+          "type": "string",
+          "description": "The official ID for the cash register."
+        },
+        "certificate": {
+          "type": "string",
+          "description": "The RKSV certificate content."
+        },
+        "privateKey": {
+          "type": "string",
+          "description": "The RKSV private key. Should be stored securely, e.g., in Secret Manager."
+        },
+        "serialNumber": {
+          "type": "string",
+          "description": "The ATU serial number."
+        },
+        "registeredAt": {
+          "type": "string",
+          "description": "The authority where the cash register is registered, e.g., 'FinanzOnline'."
+        },
+        "lastZReport": {
+          "type": "string",
+          "format": "date",
+          "description": "The date of the last successful Z-Report."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "inactive"],
+          "description": "The status of the RKSV configuration."
+        }
+      },
+      "required": ["kassenId", "certificate", "privateKey", "serialNumber", "status"]
+    },
+    "Signature": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Signature",
+      "type": "object",
+      "description": "Represents a single cryptographic signature in the RKSV chain.",
+      "properties": {
+        "hash": {
+          "type": "string",
+          "description": "The SHA-256 hash of the current data and previous hash."
+        },
+        "signature": {
+          "type": "string",
+          "description": "The cryptographic signature of the hash."
+        },
+        "previousHash": {
+          "type": "string",
+          "description": "The hash of the previous signature in the chain."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when the signature was created."
+        }
+      },
+      "required": ["hash", "signature", "previousHash", "createdAt"]
+    },
     "Integration": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Integration",
@@ -705,11 +770,23 @@
         },
         "description": "Document for automation rule settings within a tenant."
     },
-    "/tenants/{tenantId}/settings/rksv": {
+    "/tenants/{tenantId}/rksvConfig": {
       "schema": {
-        "$ref": "#/entities/RKSVKey"
+        "$ref": "#/entities/RKSVConfig"
       },
-      "description": "Document for RKSV key and status within a tenant."
+      "description": "Singleton document for RKSV fiscal certificate and configuration for a tenant."
+    },
+    "/tenants/{tenantId}/signatures/{signatureId}": {
+      "schema": {
+        "$ref": "#/entities/Signature"
+      },
+      "description": "Sub-collection for the RKSV cryptographic signature chain."
+    },
+    "/tenants/{tenantId}/zReports/{reportId}": {
+      "schema": {
+        "$ref": "#/entities/Report"
+      },
+      "description": "Sub-collection for daily Z-Reports (Tagesabschluss)."
     },
     "/tenants/{tenantId}/integrations/{platformId}": {
       "schema": {
@@ -767,5 +844,4 @@
     }
   }
 }
-
     
