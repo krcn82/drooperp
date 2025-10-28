@@ -45,3 +45,23 @@ export async function getRKSVConfig(tenantId: string) {
   }
   return doc.data();
 }
+
+/**
+ * 🇩🇪 Holt die öffentlichen, nicht-sensiblen RKSV-Konfigurationsdaten.
+ * 🇬🇧 Retrieves the public, non-sensitive RKSV configuration data.
+ */
+export async function getPublicRKSVConfig(tenantId: string) {
+  const config = await getRKSVConfig(tenantId);
+  if (!config) {
+    return null;
+  }
+
+  // Return only the non-sensitive fields
+  return {
+    kassenId: config.kassenId,
+    serialNumber: config.serialNumber,
+    status: config.status,
+    lastZReport: config.lastZReport,
+    registeredAt: config.registeredAt,
+  };
+}
