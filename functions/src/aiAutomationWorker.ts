@@ -2,6 +2,7 @@
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as admin from 'firebase-admin';
 import { Timestamp } from 'firebase-admin/firestore';
+import { logFunctionExecution } from './functions-monitor';
 
 /**
  * A scheduled function that runs every 15 minutes to analyze tenant data and sends insights.
@@ -10,30 +11,31 @@ export const aiAutomationWorker = onSchedule({
     schedule: 'every 15 minutes',
     timeZone: 'Europe/Berlin',
 }, async (context) => {
-    
+    const start = Date.now();
     console.log('Starting AI Automation Worker...');
-    const firestore = admin.firestore();
     
     try {
-      const tenantsSnapshot = await firestore.collection('tenants').get();
-      
-      if (tenantsSnapshot.empty) {
-        console.log('No tenants found. Exiting worker.');
-        return;
-      }
-      
-      const analysisPromises = tenantsSnapshot.docs.map(tenantDoc => 
-        analyzeTenantData(firestore, tenantDoc.id)
-      );
-      
-      await Promise.all(analysisPromises);
-      
-      console.log('Successfully completed AI Automation Worker for all tenants.');
-      return;
+        const firestore = admin.firestore();
+        const tenantsSnapshot = await firestore.collection('tenants').get();
+        
+        if (tenantsSnapshot.empty) {
+            console.log('No tenants found. Exiting worker.');
+            await logFunctionExecution('aiAutomationWorker', 'success', 'Completed: No tenants found.', Date.now() - start);
+            return;
+        }
+        
+        const analysisPromises = tenantsSnapshot.docs.map(tenantDoc => 
+            analyzeTenantData(firestore, tenantDoc.id)
+        );
+        
+        await Promise.all(analysisPromises);
+        
+        console.log('Successfully completed AI Automation Worker for all tenants.');
+        await logFunctionExecution('aiAutomationWorker', 'success', 'Completed successfully for all tenants.', Date.now() - start);
 
-    } catch (error) {
-      console.error('Error running AI Automation Worker:', error);
-      return;
+    } catch (error: any) {
+        console.error('Error running AI Automation Worker:', error);
+        await logFunctionExecution('aiAutomationWorker', 'error', error.message, Date.now() - start);
     }
 });
 
@@ -81,6 +83,8 @@ async function analyzeTenantData(firestore: admin.firestore.Firestore, tenantId:
 
   } catch (error) {
     console.error(`Failed to analyze data for tenant ${tenantId}:`, error);
+    // Re-throw the error to be caught by the main function's catch block
+    throw error;
   }
 }
 
