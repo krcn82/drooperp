@@ -18,4 +18,13 @@ export type Category = {
     name: { de: string, en: string };
     sort: number;
     icon: string;
+};
+
+export type Customer = {
+    id: string;
+    fullName: string;
+    email: string;
+    phone: string;
+    loyaltyPoints: number;
+    vipTier: "none" | "silver" | "gold" | "platinum";
 }

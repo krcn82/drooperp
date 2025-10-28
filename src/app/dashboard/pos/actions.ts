@@ -1,6 +1,6 @@
 'use server';
 
-import { initializeFirebase, addDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase';
+import { initializeFirebase, setDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { collection, doc, serverTimestamp } from 'firebase/firestore';
 
@@ -20,7 +20,7 @@ type TransactionPayload = {
     grandTotal: number;
   };
   cashierUserId: string;
-  customerId?: string;
+  customerId?: string | null;
   tableId?: string;
 };
 
@@ -41,7 +41,7 @@ export async function recordTransaction(tenantId: string, data: TransactionPaylo
       closedAt: null,
     };
 
-    // Use addDocumentNonBlocking with the pre-created ref
+    // Use setDocumentNonBlocking with the pre-created ref
     await setDocumentNonBlocking(transactionRef, transactionPayload, {});
     
     return { success: true, transactionId: transactionRef.id };
@@ -70,13 +70,13 @@ export async function processPayment(
     const transactionRef = doc(firestore, `tenants/${tenantId}/orders`, transactionId);
 
     // 1. Create payment record with 'pending' status
-    await addDocumentNonBlocking(paymentRef, {
+    await setDocumentNonBlocking(paymentRef, {
       ...paymentData,
       transactionId,
       tenantId,
       timestamp: serverTimestamp(),
       status: 'pending' // Initially pending for all types
-    });
+    }, {});
 
     // 2. Update transaction with payment details
     await updateDocumentNonBlocking(transactionRef, {

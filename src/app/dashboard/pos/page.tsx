@@ -6,7 +6,7 @@ import ProductGrid from "./components/ProductGrid";
 import ModeSwitcher from "./components/ModeSwitcher";
 import TableMap from "./components/TableMap";
 import CategoryTabs from "./components/CategoryTabs";
-import { type Product, type CartItem } from "./types";
+import { type Product, type CartItem, type Customer } from "./types";
 import { useCashDrawer } from '@/hooks/use-cash-drawer';
 import PaymentDialog from '@/components/pos/PaymentDialog';
 import { Button } from '@/components/ui/button';
@@ -25,6 +25,7 @@ export default function POSPage() {
   const [isPaymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [activeTransactionId, setActiveTransactionId] = useState<string | null>(null);
   const [qrCodeData, setQrCodeData] = useState<string | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
 
 
   useEffect(() => {
@@ -51,6 +52,7 @@ export default function POSPage() {
   
   const clearCart = () => {
     setCart([]);
+    setSelectedCustomer(null);
   }
 
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
@@ -94,7 +96,7 @@ export default function POSPage() {
                 Cash Drawer
             </Button>
         </div>
-        <CartPanel
+        {tenantId && <CartPanel
           cart={cart}
           language={language}
           removeFromCart={removeFromCart}
@@ -103,7 +105,10 @@ export default function POSPage() {
           setCart={setCart}
           setTransactionId={setActiveTransactionId}
           mode={mode}
-        />
+          tenantId={tenantId}
+          selectedCustomer={selectedCustomer}
+          setSelectedCustomer={setSelectedCustomer}
+        />}
       </div>
 
       <div className="col-span-8 flex flex-col">
