@@ -34,7 +34,11 @@
         "role": {
           "type": "string",
           "description": "User's role",
-          "enum": ["admin", "cashier", "viewer"]
+          "enum": [
+            "admin",
+            "cashier",
+            "viewer"
+          ]
         }
       },
       "required": [
@@ -68,8 +72,23 @@
         },
         "status": {
           "type": "string",
-          "enum": ["active", "inactive", "deleted"],
+          "enum": [
+            "active",
+            "inactive",
+            "deleted"
+          ],
           "description": "The current status of the tenant."
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "defaultLocale": {
+          "type": "string",
+          "enum": ["de", "en", "tr"]
+        },
+        "posMode": {
+          "type": "string",
+          "enum": ["retail", "restaurant"]
         }
       },
       "required": [
@@ -77,60 +96,23 @@
         "name"
       ]
     },
-    "Transaction": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "Transaction",
-      "type": "object",
-      "description": "Represents a financial transaction.",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the transaction."
+    "Category": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "Category",
+        "type": "object",
+        "description": "Represents a product category.",
+        "properties": {
+            "name": {
+                "type": "object",
+                "properties": {
+                    "de": {"type": "string"},
+                    "en": {"type": "string"}
+                }
+            },
+            "sort": {"type": "number"},
+            "icon": {"type": "string"}
         },
-        "tenantId": {
-          "type": "string",
-          "description": "Reference to Tenant. (Relationship: Tenant 1:N Transaction)"
-        },
-        "date": {
-          "type": "string",
-          "description": "Date of the transaction.",
-          "format": "date-time"
-        },
-        "amount": {
-          "type": "number",
-          "description": "Amount of the transaction."
-        },
-        "type": {
-          "type": "string",
-          "description": "Type of transaction (e.g., 'sale', 'purchase')."
-        },
-        "productId": {
-          "type": "string",
-          "description": "Reference to Product. (Relationship: Product 1:N Transaction)"
-        },
-        "signature": {
-          "type": "string",
-          "description": "RKSV signature for the transaction."
-        },
-        "qrCode": {
-          "type": "string",
-          "description": "RKSV QR code data for the transaction."
-        },
-        "source": {
-          "type": "string",
-          "description": "Source of the transaction (e.g., 'pos-shop', 'wolt', 'foodora')."
-        },
-        "status": {
-          "type": "string",
-          "description": "Status of the transaction (e.g., 'pending', 'completed', 'paid')."
-        }
-      },
-      "required": [
-        "id",
-        "tenantId",
-        "date",
-        "type"
-      ]
+        "required": ["name"]
     },
     "Product": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -138,37 +120,138 @@
       "type": "object",
       "description": "Represents a product or service.",
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the product."
-        },
-        "tenantId": {
-          "type": "string",
-          "description": "Reference to Tenant. (Relationship: Tenant 1:N Product)"
-        },
         "name": {
-          "type": "string",
-          "description": "Name of the product."
+            "type": "object",
+            "properties": {
+                "de": {"type": "string"},
+                "en": {"type": "string"}
+            }
         },
-        "description": {
-          "type": "string",
-          "description": "Description of the product."
-        },
-        "price": {
-          "type": "number",
-          "description": "Price of the product."
-        },
+        "price": {"type": "number"},
+        "unit": {"type": "string", "enum": ["Stück", "Einheit"]},
+        "categoryId": {"type": "string"},
+        "imageUrl": {"type": "string"},
+        "taxRate": {"type": "number"},
+        "sku": {"type": "string"},
+        "isAvailable": {"type": "boolean"},
         "quantity": {
             "type": "number",
             "description": "The current stock quantity of the product."
         }
       },
       "required": [
-        "id",
-        "tenantId",
         "name",
         "price"
       ]
+    },
+    "Customer": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "Customer",
+        "type": "object",
+        "description": "Represents a customer.",
+        "properties": {
+            "fullName": {"type": "string"},
+            "email": {"type": "string", "format": "email"},
+            "phone": {"type": "string"},
+            "loyaltyPoints": {"type": "number"},
+            "vipTier": {
+                "type": "string",
+                "enum": ["none", "silver", "gold", "platinum"]
+            }
+        },
+        "required": ["fullName"]
+    },
+    "Order": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "Order",
+        "type": "object",
+        "description": "Represents a POS order.",
+        "properties": {
+            "mode": {"type": "string", "enum": ["retail", "restaurant"]},
+            "status": {"type": "string", "enum": ["open", "paid", "void", "kitchen", "served"]},
+            "customerId": {"type": "string"},
+            "items": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "productId": {"type": "string"},
+                        "name": {
+                            "type": "object",
+                            "properties": { "de": {"type": "string"}, "en": {"type": "string"}}
+                        },
+                        "qty": {"type": "number"},
+                        "price": {"type": "number"},
+                        "taxRate": {"type": "number"},
+                        "note": {"type": "string"}
+                    }
+                }
+            },
+            "payments": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "method": {"type": "string", "enum": ["cash", "card", "external"]},
+                        "amount": {"type": "number"}
+                    }
+                }
+            },
+            "subtotal": {"type": "number"},
+            "taxTotal": {"type": "number"},
+            "grandTotal": {"type": "number"},
+            "createdAt": {"type": "string", "format": "date-time"},
+            "closedAt": {"type": "string", "format": "date-time"},
+            "rksv": {
+                "type": "object",
+                "properties": {
+                    "hash": {"type": "string"},
+                    "signature": {"type": "string"},
+                    "chainPrevHash": {"type": "string"}
+                }
+            }
+        },
+        "required": ["mode", "status", "items", "grandTotal", "createdAt"]
+    },
+     "Table": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "Table",
+        "type": "object",
+        "description": "Represents a table in a restaurant.",
+        "properties": {
+            "name": {"type": "string"},
+            "seats": {"type": "number"},
+            "status": {"type": "string", "enum": ["free", "occupied", "reserved"]},
+            "currentOrderId": {"type": "string"}
+        },
+        "required": ["name", "status"]
+    },
+    "KDSOrder": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "KDS Order",
+        "type": "object",
+        "description": "Represents an order for the Kitchen Display System.",
+        "properties": {
+            "orderId": {"type": "string"},
+            "items": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "productId": {"type": "string"},
+                        "name": {
+                             "type": "object",
+                            "properties": { "de": {"type": "string"}, "en": {"type": "string"}}
+                        },
+                        "qty": {"type": "number"},
+                        "seat": {"type": "number"}
+                    }
+                }
+            },
+            "status": {"type": "string", "enum": ["new", "preparing", "ready", "served"]},
+            "createdAt": {"type": "string", "format": "date-time"}
+        },
+        "required": ["orderId", "items", "status", "createdAt"]
     },
     "Plan": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -420,20 +503,20 @@
           "description": "The status of the RKSV configuration."
         },
         "useSandbox": {
-            "type": "boolean",
-            "description": "Flag to use the FinanzOnline sandbox environment."
+          "type": "boolean",
+          "description": "Flag to use the FinanzOnline sandbox environment."
         },
         "finanzOnlineSubId": {
-            "type": "string",
-            "description": "The subscriber ID for FinanzOnline API."
+          "type": "string",
+          "description": "The subscriber ID for FinanzOnline API."
         },
         "finanzOnlineUser": {
-            "type": "string",
-            "description": "The user ID for FinanzOnline API."
+          "type": "string",
+          "description": "The user ID for FinanzOnline API."
         },
         "finanzOnlinePassword": {
-            "type": "string",
-            "description": "The password for FinanzOnline API. Should be stored in Secret Manager."
+          "type": "string",
+          "description": "The password for FinanzOnline API. Should be stored in Secret Manager."
         },
         "signatureType": {
           "type": "string",
@@ -797,29 +880,43 @@
       },
       "description": "Collection to store tenant information."
     },
-    "/tenants/{tenantId}/users/{userId}": {
-      "schema": {
-        "$ref": "#/entities/User"
-      },
-      "description": "Sub-collection for users within a tenant."
-    },
-    "/tenants/{tenantId}/transactions/{transactionId}": {
-      "schema": {
-        "$ref": "#/entities/Transaction"
-      },
-      "description": "Sub-collection for transactions within a tenant."
-    },
-    "/tenants/{tenantId}/payments/{paymentId}": {
-      "schema": {
-        "$ref": "#/entities/Payment"
-      },
-      "description": "Sub-collection for payments within a tenant."
+     "/tenants/{tenantId}/categories/{categoryId}": {
+        "schema": { "$ref": "#/entities/Category" },
+        "description": "Sub-collection for product categories within a tenant."
     },
     "/tenants/{tenantId}/products/{productId}": {
       "schema": {
         "$ref": "#/entities/Product"
       },
       "description": "Sub-collection for products within a tenant."
+    },
+    "/tenants/{tenantId}/customers/{customerId}": {
+        "schema": { "$ref": "#/entities/Customer" },
+        "description": "Sub-collection for customers within a tenant."
+    },
+    "/tenants/{tenantId}/orders/{orderId}": {
+        "schema": { "$ref": "#/entities/Order" },
+        "description": "Sub-collection for POS orders within a tenant."
+    },
+    "/tenants/{tenantId}/tables/{tableId}": {
+        "schema": { "$ref": "#/entities/Table" },
+        "description": "Sub-collection for restaurant tables within a tenant."
+    },
+    "/tenants/{tenantId}/kdsOrders/{kdsId}": {
+        "schema": { "$ref": "#/entities/KDSOrder" },
+        "description": "Sub-collection for Kitchen Display System orders within a tenant."
+    },
+    "/tenants/{tenantId}/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/User"
+      },
+      "description": "Sub-collection for users within a tenant."
+    },
+    "/tenants/{tenantId}/payments/{paymentId}": {
+      "schema": {
+        "$ref": "#/entities/Payment"
+      },
+      "description": "Sub-collection for payments within a tenant."
     },
     "/tenants/{tenantId}/settings/general": {
       "schema": {
