@@ -1,36 +1,18 @@
-
-'use client';
-
-import { useState, useEffect } from 'react';
-import { useFirestore, useDoc, useMemoFirebase } from '@/firebase';
-import { doc } from 'firebase/firestore';
-
-import CartPanel from './components/CartPanel';
-import ProductGrid from './components/ProductGrid';
-import ModeSwitcher from './components/ModeSwitcher';
-import TableMap from './components/TableMap';
+"use client";
+import { useState } from "react";
+import CartPanel from "./components/CartPanel";
+import ProductGrid from "./components/ProductGrid";
+import ModeSwitcher from "./components/ModeSwitcher";
+import TableMap from "./components/TableMap";
+import { Product, CartItem } from "./types";
+import { translations } from '@/lib/pos-translations';
 import { useCashDrawer } from '@/hooks/use-cash-drawer';
 import CashDrawerDialog from '@/components/pos/CashDrawerDialog';
 import PaymentDialog from '@/components/pos/PaymentDialog';
 import { Button } from '@/components/ui/button';
 import { Landmark } from 'lucide-react';
 import QRCode from 'qrcode.react';
-
-type PosMode = 'retail' | 'restaurant';
-
-export type Product = {
-  id: string;
-  name: { de: string; en: string };
-  price: number;
-  image: string;
-  category: string;
-  isAvailable: boolean;
-  quantity: number;
-  taxRate: number;
-  sku: string;
-};
-
-export type CartItem = Product & { cartId: string; quantity: number };
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 
 const mockProducts: Product[] = [
   {
@@ -70,7 +52,7 @@ const mockProducts: Product[] = [
 
 
 export default function POSPage() {
-  const [mode, setMode] = useState<PosMode>('retail');
+  const [mode, setMode] = useState<"retail" | "restaurant">("retail");
   const [language, setLanguage] = useState<'de' | 'en'>('de');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [tenantId, setTenantId] = useState<string | null>(null);
@@ -81,10 +63,10 @@ export default function POSPage() {
   const [qrCodeData, setQrCodeData] = useState<string | null>(null);
 
 
-  useEffect(() => {
+  useState(() => {
     const storedTenantId = localStorage.getItem('tenantId');
     setTenantId(storedTenantId);
-  }, []);
+  });
   
   const addToCart = (product: Product) => {
     setCart(prevCart => {
@@ -163,11 +145,14 @@ export default function POSPage() {
         </header>
 
         <main className="flex-1 overflow-auto p-4">
-          {mode === 'retail' ? (
-            <ProductGrid products={mockProducts} addToCart={addToCart} language={language} />
-          ) : (
-            <TableMap />
-          )}
+           {mode === "restaurant" ? (
+             <div className="grid grid-cols-12 gap-6">
+                <div className="col-span-5"><TableMap /></div>
+                <div className="col-span-7"><ProductGrid products={mockProducts} addToCart={addToCart} language={language} /></div>
+              </div>
+            ) : (
+             <ProductGrid products={mockProducts} addToCart={addToCart} language={language} />
+           )}
         </main>
       </div>
       
