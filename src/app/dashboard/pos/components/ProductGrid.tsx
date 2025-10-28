@@ -6,17 +6,58 @@ import { type Product } from '../types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { collection, query, where, Query } from 'firebase/firestore';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface ProductGridProps {
-  products: Product[];
+  tenantId: string;
+  categoryId: string | null;
   addToCart: (product: Product) => void;
   language: 'de' | 'en';
 }
 
-export default function ProductGrid({ products, addToCart, language }: ProductGridProps) {
+export default function ProductGrid({ tenantId, categoryId, addToCart, language }: ProductGridProps) {
+  const firestore = useFirestore();
+  
+  const productsQuery = useMemoFirebase(() => {
+    if (!firestore || !tenantId) return null;
+    
+    const baseQuery = query(
+        collection(firestore, `tenants/${tenantId}/products`), 
+        where('isAvailable', '==', true)
+    );
+
+    if (categoryId) {
+        return query(baseQuery, where('categoryId', '==', categoryId));
+    }
+    
+    return baseQuery;
+  }, [firestore, tenantId, categoryId]);
+
+  const { data: products, isLoading } = useCollection<Product>(productsQuery);
+
+  if (isLoading) {
+    return (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+            {Array.from({ length: 10 }).map((_, i) => (
+                <Card key={i}>
+                    <CardContent className="p-0">
+                         <Skeleton className="w-full h-40" />
+                         <div className="p-4 space-y-2">
+                            <Skeleton className="h-4 w-3/4" />
+                            <Skeleton className="h-4 w-1/2" />
+                         </div>
+                    </CardContent>
+                </Card>
+            ))}
+        </div>
+    )
+  }
+
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-      {products.map(p => (
+      {products?.map(p => (
         <Card
           key={p.id}
           onClick={() => p.isAvailable && addToCart(p)}
@@ -27,7 +68,7 @@ export default function ProductGrid({ products, addToCart, language }: ProductGr
         >
           <CardContent className="p-0">
             <Image
-              src={p.image}
+              src={p.imageUrl}
               alt={p.name[language]}
               width={300}
               height={300}

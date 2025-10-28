@@ -2,7 +2,7 @@ export type Product = {
   id: string;
   name: { de: string; en: string };
   price: number;
-  image: string;
+  imageUrl: string;
   category: string;
   isAvailable: boolean;
   quantity: number;
@@ -11,3 +11,10 @@ export type Product = {
 };
 
 export type CartItem = Product & { cartId: string; quantity: number };
+
+export type Category = {
+    id: string;
+    name: { de: string, en: string };
+    sort: number;
+    icon: string;
+}
