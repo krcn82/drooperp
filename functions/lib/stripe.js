@@ -44,7 +44,7 @@ const stripe_1 = __importDefault(require("stripe"));
 // To set this value:
 // firebase functions:config:set stripe.secret="your_stripe_secret_key"
 const stripe = new stripe_1.default(functions.config().stripe.secret, {
-    apiVersion: '2024-06-20',
+    apiVersion: '2024-04-10',
 });
 /**
  * Creates a Stripe PaymentIntent for a given transaction.

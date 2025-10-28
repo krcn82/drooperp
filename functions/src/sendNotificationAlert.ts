@@ -1,5 +1,5 @@
 
-import * as functions from 'firebase-functions';
+import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import * as admin from 'firebase-admin';
 
 /**
@@ -7,15 +7,15 @@ import * as admin from 'firebase-admin';
  * It relies on the Firebase "Trigger Email" extension, which listens for new documents
  * in a specified 'mail' collection.
  */
-export const onNotificationCreate = functions.firestore
-  .document('/tenants/{tenantId}/notifications/{notificationId}')
-  .onCreate(async (snap, context) => {
-    const notification = snap.data();
-    const { tenantId } = context.params;
+export const onNotificationCreate = onDocumentCreated('/tenants/{tenantId}/notifications/{notificationId}', async (event) => {
+    
+    if (!event.data) return null;
+    const notification = event.data.data();
+    const { tenantId } = event.params;
 
     // 1. Check if the notification is a critical alert
     if (notification.type !== 'alert') {
-      console.log(`Notification ${context.params.notificationId} is not an alert. Skipping email.`);
+      console.log(`Notification ${event.params.notificationId} is not an alert. Skipping email.`);
       return null;
     }
 
@@ -74,5 +74,3 @@ export const onNotificationCreate = functions.firestore
 
     return null;
   });
-
-    

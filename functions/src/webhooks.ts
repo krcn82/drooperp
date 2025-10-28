@@ -1,5 +1,5 @@
 
-import * as functions from 'firebase-functions';
+import { onRequest } from "firebase-functions/v2/https";
 import * as admin from 'firebase-admin';
 import * as crypto from 'crypto';
 
@@ -7,7 +7,7 @@ import * as crypto from 'crypto';
  * Handles incoming webhooks from delivery platforms like Wolt and Foodora.
  * URL format: /integrationWebhook/wolt?tenantId=your_tenant_id
  */
-export const integrationWebhook = functions.https.onRequest(async (req, res) => {
+export const integrationWebhook = onRequest(async (req, res) => {
     // 1. Extract platform and tenantId from the request
     const pathParts = req.path.split('/');
     const platform = pathParts[pathParts.length - 1]; // e.g., 'wolt'
@@ -129,5 +129,3 @@ export const integrationWebhook = functions.https.onRequest(async (req, res) => 
         res.status(500).send('Internal Server Error');
     }
 });
-
-    

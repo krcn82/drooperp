@@ -1,20 +1,20 @@
 
-import * as functions from 'firebase-functions';
+import { HttpsError, onCall } from "firebase-functions/v2/https";
 import * as admin from 'firebase-admin';
 
 /**
  * Generates a Z-Report for a given cash register session.
  * Calculates totals and updates the cash register document.
  */
-export const generateZReport = functions.https.onCall(async (data, context) => {
-  const { tenantId, cashRegisterId } = data;
-  const uid = context.auth?.uid;
+export const generateZReport = onCall(async (request) => {
+  const { tenantId, cashRegisterId } = request.data;
+  const uid = request.auth?.uid;
 
   if (!uid) {
-    throw new functions.https.HttpsError('unauthenticated', 'The function must be called while authenticated.');
+    throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
   }
   if (!tenantId || !cashRegisterId) {
-    throw new functions.https.HttpsError('invalid-argument', 'Missing required data: tenantId or cashRegisterId.');
+    throw new HttpsError('invalid-argument', 'Missing required data: tenantId or cashRegisterId.');
   }
 
   const firestore = admin.firestore();
@@ -23,7 +23,7 @@ export const generateZReport = functions.https.onCall(async (data, context) => {
   try {
     const registerDoc = await registerRef.get();
     if (!registerDoc.exists) {
-      throw new functions.https.HttpsError('not-found', 'Cash register session not found.');
+      throw new HttpsError('not-found', 'Cash register session not found.');
     }
     const registerData = registerDoc.data()!;
 
@@ -103,6 +103,9 @@ export const generateZReport = functions.https.onCall(async (data, context) => {
 
   } catch (error: any) {
     console.error('Error generating Z-Report:', error);
-    throw new functions.https.HttpsError('internal', 'An unexpected error occurred.', error.message);
+    if (error instanceof HttpsError) {
+        throw error;
+    }
+    throw new HttpsError('internal', 'An unexpected error occurred.', error.message);
   }
 });

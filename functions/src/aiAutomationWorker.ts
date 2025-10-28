@@ -1,5 +1,5 @@
 
-import * as functions from 'firebase-functions';
+import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as admin from 'firebase-admin';
 import { Timestamp } from 'firebase-admin/firestore';
 
@@ -7,9 +7,7 @@ import { Timestamp } from 'firebase-admin/firestore';
  * A daily scheduled function that analyzes tenant data and sends insights.
  * Runs every day at 7:00 AM Pacific Time.
  */
-export const aiAutomationWorker = functions.pubsub.schedule('0 7 * * *')
-  .timeZone('America/Los_Angeles') 
-  .onRun(async (context) => {
+export const aiAutomationWorker = onSchedule('0 7 * * *', async (context) => {
     
     console.log('Starting daily AI Automation Worker...');
     const firestore = admin.firestore();
@@ -136,5 +134,3 @@ async function analyzeSales(firestore: admin.firestore.Firestore, tenantId: stri
         return `Heads up: Sales have dropped ${Math.abs(percentageChange).toFixed(0)}% this week compared to last week, with a total of €${lastWeekRevenue.toFixed(2)}.`;
     }
 }
-
-    

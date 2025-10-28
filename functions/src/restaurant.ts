@@ -1,19 +1,20 @@
-import * as functions from 'firebase-functions';
+import { HttpsError, onCall } from "firebase-functions/v2/https";
+import { onDocumentUpdated } from "firebase-functions/v2/firestore";
 import * as admin from 'firebase-admin';
 
 /**
  * Creates a new order for the Kitchen Display System (KDS).
  */
-export const createKdsOrder = functions.https.onCall(async (data, context) => {
-  const { tenantId, orderData } = data;
-  const uid = context.auth?.uid;
+export const createKdsOrder = onCall(async (request) => {
+  const { tenantId, orderData } = request.data;
+  const uid = request.auth?.uid;
 
   if (!uid) {
-    throw new functions.https.HttpsError('unauthenticated', 'The function must be called while authenticated.');
+    throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
   }
 
   if (!tenantId || !orderData || !orderData.items || !orderData.tableId) {
-    throw new functions.https.HttpsError('invalid-argument', 'Missing required data: tenantId, items, or tableId.');
+    throw new HttpsError('invalid-argument', 'Missing required data: tenantId, items, or tableId.');
   }
 
   try {
@@ -33,28 +34,28 @@ export const createKdsOrder = functions.https.onCall(async (data, context) => {
     return { success: true, orderId: kdsOrderRef.id };
   } catch (error) {
     console.error('Error creating KDS order:', error);
-    throw new functions.https.HttpsError('internal', 'An error occurred while creating the KDS order.');
+    throw new HttpsError('internal', 'An error occurred while creating the KDS order.');
   }
 });
 
 /**
  * Updates the status of a KDS order.
  */
-export const updateKdsOrderStatus = functions.https.onCall(async (data, context) => {
-  const { tenantId, orderId, status } = data;
-  const uid = context.auth?.uid;
+export const updateKdsOrderStatus = onCall(async (request) => {
+  const { tenantId, orderId, status } = request.data;
+  const uid = request.auth?.uid;
 
   if (!uid) {
-    throw new functions.https.HttpsError('unauthenticated', 'The function must be called while authenticated.');
+    throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
   }
 
   if (!tenantId || !orderId || !status) {
-    throw new functions.https.HttpsError('invalid-argument', 'Missing required data: tenantId, orderId, or status.');
+    throw new HttpsError('invalid-argument', 'Missing required data: tenantId, orderId, or status.');
   }
 
   const validStatuses = ['pending', 'cooking', 'ready', 'served', 'canceled'];
   if (!validStatuses.includes(status)) {
-    throw new functions.https.HttpsError('invalid-argument', `Invalid status. Must be one of: ${validStatuses.join(', ')}`);
+    throw new HttpsError('invalid-argument', `Invalid status. Must be one of: ${validStatuses.join(', ')}`);
   }
 
   try {
@@ -69,23 +70,25 @@ export const updateKdsOrderStatus = functions.https.onCall(async (data, context)
     return { success: true, message: `Order ${orderId} updated to ${status}.` };
   } catch (error) {
     console.error('Error updating KDS order status:', error);
-    throw new functions.https.HttpsError('internal', 'An error occurred while updating the order status.');
+    throw new HttpsError('internal', 'An error occurred while updating the order status.');
   }
 });
 
 /**
  * Firestore trigger that sends a notification when a KDS order status changes.
  */
-export const onKdsOrderUpdate = functions.firestore
-  .document('/tenants/{tenantId}/kdsOrders/{orderId}')
-  .onUpdate(async (change, context) => {
-    const { tenantId, orderId } = context.params;
-    const newValue = change.after.data();
-    const oldValue = change.before.data();
+export const onKdsOrderUpdate = onDocumentUpdated('/tenants/{tenantId}/kdsOrders/{orderId}', async (event) => {
+    const { tenantId, orderId } = event.params;
+    
+    if (!event.data) {
+        return null;
+    }
+    const newValue = event.data.after.data();
+    const oldValue = event.data.before.data();
 
     // Check if the status has actually changed
     if (newValue.status === oldValue.status) {
-      return null;
+        return null;
     }
     
     console.log(`KDS order ${orderId} in tenant ${tenantId} changed status to ${newValue.status}`);

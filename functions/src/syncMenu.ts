@@ -1,20 +1,20 @@
-import * as functions from 'firebase-functions';
+import { HttpsError, onCall } from "firebase-functions/v2/https";
 import * as admin from 'firebase-admin';
 
 /**
  * A callable function to sync a tenant's product menu with an external platform.
  * This is a placeholder for a future enhancement.
  */
-export const syncMenuWithPlatform = functions.https.onCall(async (data, context) => {
-    const { tenantId, platform } = data;
-    const uid = context.auth?.uid;
+export const syncMenuWithPlatform = onCall(async (request) => {
+    const { tenantId, platform } = request.data;
+    const uid = request.auth?.uid;
 
     if (!uid) {
-        throw new functions.https.HttpsError('unauthenticated', 'The function must be called while authenticated.');
+        throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
     }
 
     if (!tenantId || !platform) {
-        throw new functions.https.HttpsError('invalid-argument', 'Missing required data: tenantId or platform.');
+        throw new HttpsError('invalid-argument', 'Missing required data: tenantId or platform.');
     }
 
     const firestore = admin.firestore();
@@ -66,6 +66,6 @@ export const syncMenuWithPlatform = functions.https.onCall(async (data, context)
 
     } catch (error: any) {
         console.error(`Error syncing menu for tenant ${tenantId} with ${platform}:`, error);
-        throw new functions.https.HttpsError('internal', 'An unexpected error occurred during menu sync.', error.message);
+        throw new HttpsError('internal', 'An unexpected error occurred during menu sync.', error.message);
     }
 });

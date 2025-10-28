@@ -1,9 +1,5 @@
-import * as functions from "firebase-functions";
+import { HttpsError, onCall } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
-
-if (!admin.apps.length) {
-  admin.initializeApp();
-}
 
 /**
  * POS Transaction kaydı oluşturur
@@ -11,21 +7,21 @@ if (!admin.apps.length) {
  * - Firestore kaydı
  * - Tenant bazlı işlem izleme
  */
-export const recordTransaction = functions.https.onCall(async (data, context) => {
+export const recordTransaction = onCall(async (request) => {
   try {
     // Kullanıcı doğrulama
-    if (!context.auth) {
-      throw new functions.https.HttpsError(
+    if (!request.auth) {
+      throw new HttpsError(
         "unauthenticated",
         "Bu işlemi gerçekleştirmek için giriş yapılmalıdır."
       );
     }
 
-    const tenantId = data.tenantId;
-    const transactionData = data.transactionData;
+    const tenantId = request.data.tenantId;
+    const transactionData = request.data.transactionData;
 
     if (!tenantId || !transactionData) {
-      throw new functions.https.HttpsError(
+      throw new HttpsError(
         "invalid-argument",
         "Eksik işlem verisi veya tenant ID."
       );
@@ -34,7 +30,7 @@ export const recordTransaction = functions.https.onCall(async (data, context) =>
     const { items, totalAmount, paymentMethod } = transactionData;
 
     if (!items || !totalAmount || !paymentMethod) {
-      throw new functions.https.HttpsError(
+      throw new HttpsError(
         "invalid-argument",
         "İşlem verileri eksik: items, totalAmount, paymentMethod zorunludur."
       );
@@ -46,7 +42,7 @@ export const recordTransaction = functions.https.onCall(async (data, context) =>
       .add({
         ...transactionData,
         timestamp: admin.firestore.FieldValue.serverTimestamp(),
-        createdBy: context.auth.uid,
+        createdBy: request.auth.uid,
         status: "completed",
       });
 
@@ -63,7 +59,10 @@ export const recordTransaction = functions.https.onCall(async (data, context) =>
 
   } catch (error: any) {
     console.error("❌ Transaction recording failed:", error);
-    throw new functions.https.HttpsError(
+    if (error instanceof HttpsError) {
+        throw error;
+    }
+    throw new HttpsError(
       "internal",
       `İşlem kaydı başarısız: ${error.message}`
     );

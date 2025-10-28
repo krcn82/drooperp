@@ -1,26 +1,26 @@
 
-import * as functions from 'firebase-functions';
+import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
 import * as admin from 'firebase-admin';
 import Stripe from 'stripe';
 
 // Initialize Stripe SDK with secret key from Firebase environment config
 // To set this value:
 // firebase functions:config:set stripe.secret="your_stripe_secret_key"
-const stripe = new Stripe(functions.config().stripe.secret, {
-  apiVersion: '2024-06-20',
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+  apiVersion: '2024-04-10',
 });
 
 /**
  * Creates a Stripe PaymentIntent for a given transaction.
  */
-export const processStripePayment = functions.https.onCall(async (data, context) => {
-  if (!context.auth) {
-    throw new functions.https.HttpsError('unauthenticated', 'The function must be called while authenticated.');
+export const processStripePayment = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
   }
 
-  const { tenantId, transactionId, amount, currency } = data;
+  const { tenantId, transactionId, amount, currency } = request.data;
   if (!tenantId || !transactionId || !amount || !currency) {
-    throw new functions.https.HttpsError('invalid-argument', 'Missing required data fields.');
+    throw new HttpsError('invalid-argument', 'Missing required data fields.');
   }
   
   // Convert amount to cents for Stripe
@@ -33,7 +33,7 @@ export const processStripePayment = functions.https.onCall(async (data, context)
       metadata: {
         tenantId,
         transactionId,
-        paymentId: data.paymentId // The paymentId created on the client
+        paymentId: request.data.paymentId // The paymentId created on the client
       },
     });
 
@@ -57,7 +57,7 @@ export const processStripePayment = functions.https.onCall(async (data, context)
         error: error.message,
         timestamp: admin.firestore.FieldValue.serverTimestamp()
     });
-    throw new functions.https.HttpsError('internal', 'An error occurred while creating the payment intent.', error.message);
+    throw new HttpsError('internal', 'An error occurred while creating the payment intent.', error.message);
   }
 });
 
@@ -65,7 +65,7 @@ export const processStripePayment = functions.https.onCall(async (data, context)
 /**
  * Handles incoming webhooks from Stripe to confirm payment success.
  */
-export const stripeWebhook = functions.https.onRequest(async (req, res) => {
+export const stripeWebhook = onRequest(async (req, res) => {
     let event: Stripe.Event;
 
     try {
@@ -73,7 +73,7 @@ export const stripeWebhook = functions.https.onRequest(async (req, res) => {
         const signature = req.headers['stripe-signature'] as string;
         // Get the webhook secret from Firebase config
         // firebase functions:config:set stripe.webhook_secret="your_webhook_signing_secret"
-        const webhookSecret = functions.config().stripe.webhook_secret;
+        const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
         
         event = stripe.webhooks.constructEvent(req.rawBody, signature, webhookSecret);
     } catch (err: any) {

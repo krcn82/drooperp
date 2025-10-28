@@ -1,5 +1,5 @@
 
-import * as functions from 'firebase-functions';
+import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as admin from 'firebase-admin';
 import { Timestamp } from 'firebase-admin/firestore';
 
@@ -52,8 +52,7 @@ const addAuditLog = (
 /**
  * Scheduled function that runs every 15 minutes to perform automated checks.
  */
-export const automationWorker = functions.pubsub.schedule('every 15 minutes')
-  .onRun(async (context) => {
+export const automationWorker = onSchedule('every 15 minutes', async (context) => {
     console.log('Starting 15-minute automation worker...');
     const firestore = admin.firestore();
     
