@@ -2,6 +2,7 @@
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as admin from 'firebase-admin';
 import { Timestamp } from 'firebase-admin/firestore';
+import { logFunctionExecution } from './functions-monitor';
 
 // Default automation rules if a tenant has not configured them
 const defaultRules = {
@@ -53,14 +54,16 @@ const addAuditLog = (
  * Scheduled function that runs every 15 minutes to perform automated checks.
  */
 export const automationWorker = onSchedule({ schedule: "every 15 minutes", timeZone: "Europe/Berlin" }, async (event) => {
+    const start = Date.now();
     console.log('Starting 15-minute automation worker...');
-    const firestore = admin.firestore();
     
     try {
+      const firestore = admin.firestore();
       const tenantsSnapshot = await firestore.collection('tenants').where('status', '==', 'active').get();
       
       if (tenantsSnapshot.empty) {
         console.log('No active tenants found.');
+        await logFunctionExecution('automationWorker', 'success', 'Completed: No active tenants found.', Date.now() - start);
         return;
       }
       
@@ -71,11 +74,11 @@ export const automationWorker = onSchedule({ schedule: "every 15 minutes", timeZ
       await Promise.all(workerPromises);
       
       console.log('Successfully completed automation worker for all active tenants.');
-      return;
+      await logFunctionExecution('automationWorker', 'success', 'Completed successfully for all active tenants.', Date.now() - start);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error running automation worker:', error);
-      return;
+      await logFunctionExecution('automationWorker', 'error', error.message, Date.now() - start);
     }
 });
 
@@ -142,6 +145,8 @@ async function runChecksForTenant(firestore: admin.firestore.Firestore, tenantId
     
   } catch (error) {
     console.error(`Failed to run checks for tenant ${tenantId}:`, error);
+    // Re-throw to be caught by the main worker's catch block
+    throw error;
   }
 }
 
