@@ -40,3 +40,4 @@ export { sendDailySystemReport } from './sendDailySystemReport';
 export * from "./pos";
 export { generateZReport } from "./pos/generateZReport";
 export { logError } from './lib/error-logging';
+export { dailyScheduler } from './pos/dailyScheduler';
