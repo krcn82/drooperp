@@ -1,3 +1,4 @@
+
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import * as admin from 'firebase-admin';
 
@@ -61,3 +62,4 @@ export const generateDatevExport = onCall(async (request) => {
 
   return { csv: csvContent, message: 'Export generated successfully.' };
 });
+
