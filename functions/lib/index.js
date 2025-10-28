@@ -32,8 +32,11 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
+var __exportStar = (this && this.__exportStar) || function(m, exports) {
+    for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
+};
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendDailySystemReport = exports.onNotificationCreate = exports.syncMenuWithPlatform = exports.syncIntegrationOrders = exports.integrationWebhook = exports.syncOfflineTransactions = exports.recordTransaction = exports.onKdsOrderUpdate = exports.updateKdsOrderStatus = exports.createKdsOrder = exports.paymentDeviceCallback = exports.startDevicePayment = exports.stripeWebhook = exports.processStripePayment = exports.generateZReport = exports.generateReport = exports.generateDatevExport = exports.automationWorker = exports.aiAutomationWorker = void 0;
+exports.sendDailySystemReport = exports.onNotificationCreate = exports.syncMenuWithPlatform = exports.syncIntegrationOrders = exports.integrationWebhook = exports.syncOfflineTransactions = exports.recordTransaction = exports.onKdsOrderUpdate = exports.updateKdsOrderStatus = exports.createKdsOrder = exports.paymentDeviceCallback = exports.startDevicePayment = exports.stripeWebhook = exports.processStripePayment = exports.generateReport = exports.generateDatevExport = exports.automationWorker = exports.aiAutomationWorker = void 0;
 /**
  * Initializes Firebase Admin SDK and exports all Cloud Functions.
  * This file acts as the main entry point for deploying functions.
@@ -53,8 +56,6 @@ var generateDatevExport_1 = require("./generateDatevExport");
 Object.defineProperty(exports, "generateDatevExport", { enumerable: true, get: function () { return generateDatevExport_1.generateDatevExport; } });
 var generateReport_1 = require("./generateReport");
 Object.defineProperty(exports, "generateReport", { enumerable: true, get: function () { return generateReport_1.generateReport; } });
-var generateZReport_1 = require("./generateZReport");
-Object.defineProperty(exports, "generateZReport", { enumerable: true, get: function () { return generateZReport_1.generateZReport; } });
 // Payment Processing
 var stripe_1 = require("./stripe");
 Object.defineProperty(exports, "processStripePayment", { enumerable: true, get: function () { return stripe_1.processStripePayment; } });
@@ -86,4 +87,5 @@ var sendDailySystemReport_1 = require("./sendDailySystemReport");
 Object.defineProperty(exports, "sendDailySystemReport", { enumerable: true, get: function () { return sendDailySystemReport_1.sendDailySystemReport; } });
 // export { logFunctionExecution } from './functions-monitor';
 // export { sendEmailNotification } from './email-notifications';
+__exportStar(require("./pos"), exports);
 //# sourceMappingURL=index.js.map

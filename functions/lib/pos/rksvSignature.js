@@ -32,43 +32,47 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.recordTransaction = void 0;
+exports.generateRKSVSignature = generateRKSVSignature;
+const crypto_1 = __importDefault(require("crypto"));
 const admin = __importStar(require("firebase-admin"));
-const functions = __importStar(require("firebase-functions"));
-const rksvSignature_1 = require("./pos/rksvSignature");
-if (!admin.apps.length) {
-    admin.initializeApp();
-}
-exports.recordTransaction = functions
-    .region("us-central1")
-    .https.onCall(async (data, context) => {
-    const { tenantId, transaction } = data;
-    if (!tenantId || !transaction) {
-        throw new functions.https.HttpsError("invalid-argument", "tenantId and transaction are required.");
-    }
+/**
+ * RKSV Signature Chain Manager
+ * Her işlem bir önceki imzanın hash’i ile zincirlenir.
+ * Bu, yasal işlem zincirini oluşturur.
+ */
+async function generateRKSVSignature(tenantId, transactionData) {
     const db = admin.firestore();
-    const tenantRef = db.collection("tenants").doc(tenantId);
-    const transactionsRef = tenantRef.collection("transactions");
-    // 💬 1️⃣ İşlem Firestore’a kaydediliyor
-    const transactionRef = await transactionsRef.add({
-        ...transaction,
+    const lastSignatureDoc = await db
+        .collection("tenants")
+        .doc(tenantId)
+        .collection("rksvSignatures")
+        .orderBy("createdAt", "desc")
+        .limit(1)
+        .get();
+    const lastHash = lastSignatureDoc.empty
+        ? "INITIAL_HASH"
+        : lastSignatureDoc.docs[0].data().currentHash;
+    // Yeni hash zinciri oluştur
+    const rawData = JSON.stringify(transactionData) + lastHash;
+    const currentHash = crypto_1.default.createHash("sha256").update(rawData).digest("hex");
+    // JWS (JSON Web Signature) simülasyonu
+    const privateKey = process.env.RKSV_PRIVATE_KEY;
+    if (!privateKey)
+        throw new Error("RKSV private key not set in environment variables");
+    const signer = crypto_1.default.createSign("RSA-SHA256");
+    signer.update(currentHash);
+    const signature = signer.sign(privateKey, "base64");
+    // Firestore’a kaydet
+    await db.collection("tenants").doc(tenantId).collection("rksvSignatures").add({
+        currentHash,
+        lastHash,
+        signature,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
-    // 💬 2️⃣ RKSV imzası oluşturuluyor
-    const { currentHash, signature } = await (0, rksvSignature_1.generateRKSVSignature)(tenantId, transaction);
-    // 💬 3️⃣ İşleme RKSV verileri ekleniyor
-    await transactionRef.update({
-        rksvSignature: signature,
-        rksvHash: currentHash,
-        rksvTimestamp: admin.firestore.FieldValue.serverTimestamp(),
-    });
-    console.info(`✅ Transaction ${transactionRef.id} processed successfully for tenant ${tenantId}`);
-    return {
-        status: "success",
-        transactionId: transactionRef.id,
-        rksvSignature: signature,
-        rksvHash: currentHash,
-    };
-});
-//# sourceMappingURL=recordTransaction.js.map
+    return { currentHash, signature };
+}
+//# sourceMappingURL=rksvSignature.js.map

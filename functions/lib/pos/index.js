@@ -33,42 +33,19 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.recordTransaction = void 0;
+exports.processStripePayment = exports.generateZReport = exports.paymentDeviceCallback = exports.startDevicePayment = exports.recordTransaction = void 0;
 const admin = __importStar(require("firebase-admin"));
-const functions = __importStar(require("firebase-functions"));
-const rksvSignature_1 = require("./pos/rksvSignature");
+const recordTransaction_1 = require("./recordTransaction");
+Object.defineProperty(exports, "recordTransaction", { enumerable: true, get: function () { return recordTransaction_1.recordTransaction; } });
+const startDevicePayment_1 = require("./startDevicePayment");
+Object.defineProperty(exports, "startDevicePayment", { enumerable: true, get: function () { return startDevicePayment_1.startDevicePayment; } });
+const paymentDeviceCallback_1 = require("./paymentDeviceCallback");
+Object.defineProperty(exports, "paymentDeviceCallback", { enumerable: true, get: function () { return paymentDeviceCallback_1.paymentDeviceCallback; } });
+const generateZReport_1 = require("./generateZReport");
+Object.defineProperty(exports, "generateZReport", { enumerable: true, get: function () { return generateZReport_1.generateZReport; } });
+const stripe_1 = require("./stripe");
+Object.defineProperty(exports, "processStripePayment", { enumerable: true, get: function () { return stripe_1.processStripePayment; } });
 if (!admin.apps.length) {
     admin.initializeApp();
 }
-exports.recordTransaction = functions
-    .region("us-central1")
-    .https.onCall(async (data, context) => {
-    const { tenantId, transaction } = data;
-    if (!tenantId || !transaction) {
-        throw new functions.https.HttpsError("invalid-argument", "tenantId and transaction are required.");
-    }
-    const db = admin.firestore();
-    const tenantRef = db.collection("tenants").doc(tenantId);
-    const transactionsRef = tenantRef.collection("transactions");
-    // 💬 1️⃣ İşlem Firestore’a kaydediliyor
-    const transactionRef = await transactionsRef.add({
-        ...transaction,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-    // 💬 2️⃣ RKSV imzası oluşturuluyor
-    const { currentHash, signature } = await (0, rksvSignature_1.generateRKSVSignature)(tenantId, transaction);
-    // 💬 3️⃣ İşleme RKSV verileri ekleniyor
-    await transactionRef.update({
-        rksvSignature: signature,
-        rksvHash: currentHash,
-        rksvTimestamp: admin.firestore.FieldValue.serverTimestamp(),
-    });
-    console.info(`✅ Transaction ${transactionRef.id} processed successfully for tenant ${tenantId}`);
-    return {
-        status: "success",
-        transactionId: transactionRef.id,
-        rksvSignature: signature,
-        rksvHash: currentHash,
-    };
-});
-//# sourceMappingURL=recordTransaction.js.map
+//# sourceMappingURL=index.js.map

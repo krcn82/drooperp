@@ -16,8 +16,6 @@ export { automationWorker } from './automationWorker';
 // Data Export and Reporting
 export { generateDatevExport } from './generateDatevExport';
 export { generateReport } from './generateReport';
-export { generateZReport } from './generateZReport';
-
 // Payment Processing
 export { processStripePayment, stripeWebhook } from './stripe';
 export { startDevicePayment, paymentDeviceCallback } from './paymentDevice';
