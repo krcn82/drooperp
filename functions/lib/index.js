@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.onNotificationCreate = exports.syncMenuWithPlatform = exports.syncIntegrationOrders = exports.integrationWebhook = exports.syncOfflineTransactions = exports.recordTransaction = exports.onKdsOrderUpdate = exports.updateKdsOrderStatus = exports.createKdsOrder = exports.paymentDeviceCallback = exports.startDevicePayment = exports.stripeWebhook = exports.processStripePayment = exports.generateZReport = exports.generateReport = exports.generateDatevExport = exports.automationWorker = exports.aiAutomationWorker = void 0;
+exports.sendDailySystemReport = exports.onNotificationCreate = exports.syncMenuWithPlatform = exports.syncIntegrationOrders = exports.integrationWebhook = exports.syncOfflineTransactions = exports.recordTransaction = exports.onKdsOrderUpdate = exports.updateKdsOrderStatus = exports.createKdsOrder = exports.paymentDeviceCallback = exports.startDevicePayment = exports.stripeWebhook = exports.processStripePayment = exports.generateZReport = exports.generateReport = exports.generateDatevExport = exports.automationWorker = exports.aiAutomationWorker = void 0;
 /**
  * Initializes Firebase Admin SDK and exports all Cloud Functions.
  * This file acts as the main entry point for deploying functions.
@@ -82,6 +82,8 @@ Object.defineProperty(exports, "syncMenuWithPlatform", { enumerable: true, get: 
 var sendNotificationAlert_1 = require("./sendNotificationAlert");
 Object.defineProperty(exports, "onNotificationCreate", { enumerable: true, get: function () { return sendNotificationAlert_1.onNotificationCreate; } });
 // Monitoring and email are helpers, not exported as functions
+var sendDailySystemReport_1 = require("./sendDailySystemReport");
+Object.defineProperty(exports, "sendDailySystemReport", { enumerable: true, get: function () { return sendDailySystemReport_1.sendDailySystemReport; } });
 // export { logFunctionExecution } from './functions-monitor';
 // export { sendEmailNotification } from './email-notifications';
 //# sourceMappingURL=index.js.map
