@@ -4,14 +4,27 @@ import { initializeFirebase, addDocumentNonBlocking, updateDocumentNonBlocking }
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { collection, doc, serverTimestamp } from 'firebase/firestore';
 
-type TransactionData = {
-  items: { name: string; qty: number; price: number; productId: string }[];
+type TransactionPayload = {
+  mode: 'retail' | 'restaurant';
+  items: {
+    productId: string;
+    name: { de: string; en: string };
+    qty: number;
+    price: number;
+    taxRate: number;
+    note?: string;
+  }[];
+  totals: {
+    subtotal: number;
+    taxes: number;
+    grandTotal: number;
+  };
   cashierUserId: string;
-  amountTotal: number;
-  type: 'shop' | 'restaurant';
+  customerId?: string;
+  tableId?: string;
 };
 
-export async function recordTransaction(tenantId: string, data: Omit<TransactionData, 'paymentMethod'>) {
+export async function recordTransaction(tenantId: string, data: TransactionPayload) {
   if (!tenantId) {
     return { success: false, message: 'Tenant ID is missing.' };
   }
@@ -19,24 +32,26 @@ export async function recordTransaction(tenantId: string, data: Omit<Transaction
   const { firestore } = initializeFirebase();
   
   try {
-    const transactionRef = doc(collection(firestore, `tenants/${tenantId}/transactions`));
+    const transactionRef = doc(collection(firestore, `tenants/${tenantId}/orders`));
 
     const transactionPayload = {
       ...data,
-      status: 'pending_payment', // New status
-      timestamp: serverTimestamp(),
+      status: 'pending_payment',
+      createdAt: serverTimestamp(),
+      closedAt: null,
     };
 
-    // This is now just creating the transaction doc, not handling payment/RKSV
-    await addDocumentNonBlocking(transactionRef, transactionPayload);
+    // Use addDocumentNonBlocking with the pre-created ref
+    await setDocumentNonBlocking(transactionRef, transactionPayload, {});
     
-    return { success: true, transactionId: transactionRef.id, qrCode: null };
+    return { success: true, transactionId: transactionRef.id };
 
   } catch (error: any) {
     console.error('Failed to record transaction:', error);
     return { success: false, message: error.message || 'Could not create transaction.' };
   }
 }
+
 
 export async function processPayment(
   tenantId: string, 
@@ -52,7 +67,7 @@ export async function processPayment(
   
   try {
     const paymentRef = doc(collection(firestore, `tenants/${tenantId}/payments`));
-    const transactionRef = doc(firestore, `tenants/${tenantId}/transactions`, transactionId);
+    const transactionRef = doc(firestore, `tenants/${tenantId}/orders`, transactionId);
 
     // 1. Create payment record with 'pending' status
     await addDocumentNonBlocking(paymentRef, {
@@ -84,7 +99,7 @@ export async function processPayment(
 
     } else if (paymentData.method === 'cash') {
         await updateDocumentNonBlocking(paymentRef, { status: 'completed' });
-        await updateDocumentNonBlocking(transactionRef, { status: 'paid' });
+        await updateDocumentNonBlocking(transactionRef, { status: 'paid', closedAt: serverTimestamp() });
         // TODO: Call RKSV signing for cash payment
         return { success: true, paymentId: paymentRef.id, qrCode: 'sample-qr-code-data' };
         
