@@ -30,8 +30,8 @@ export const logFunctionExecution = async (
     // If the function failed, send an email notification
     if (status === 'error') {
       await sendEmailNotification(
-        `🚨 Function Error: ${functionName}`,
-        `The function "${functionName}" failed with the following error:\n\n${details}`
+        `⚠️ Firebase Function Error: ${functionName}`,
+        `Function: ${functionName}\nDetails: ${details || "No details"}\nTime: ${new Date().toLocaleString()}`
       );
     }
 
