@@ -1,136 +1,187 @@
 
-"use client";
+'use client';
 
-import { useState } from "react";
-import Image from "next/image";
-import { translations } from "@/lib/pos-translations";
+import { useState, useEffect } from 'react';
+import { useFirestore, useDoc, useMemoFirebase } from '@/firebase';
+import { doc } from 'firebase/firestore';
 
-interface Product {
+import CartPanel from './components/CartPanel';
+import ProductGrid from './components/ProductGrid';
+import ModeSwitcher from './components/ModeSwitcher';
+import TableMap from './components/TableMap';
+import { useCashDrawer } from '@/hooks/use-cash-drawer';
+import CashDrawerDialog from '@/components/pos/CashDrawerDialog';
+import PaymentDialog from '@/components/pos/PaymentDialog';
+import { Button } from '@/components/ui/button';
+import { Landmark } from 'lucide-react';
+import QRCode from 'qrcode.react';
+
+type PosMode = 'retail' | 'restaurant';
+
+export type Product = {
   id: string;
   name: { de: string; en: string };
   price: number;
   image: string;
   category: string;
-}
+  isAvailable: boolean;
+  quantity: number;
+  taxRate: number;
+  sku: string;
+};
+
+export type CartItem = Product & { cartId: string; quantity: number };
+
+const mockProducts: Product[] = [
+  {
+    id: '1',
+    name: { de: 'Schreibtischlampe', en: 'Desk Lamp' },
+    price: 46.0,
+    image: 'https://picsum.photos/seed/lamp/400/400',
+    category: 'Möbel',
+    isAvailable: true,
+    quantity: 10,
+    taxRate: 0.19,
+    sku: 'SKU-LAMP-01',
+  },
+  {
+    id: '2',
+    name: { de: 'Ablagebox', en: 'Storage Box' },
+    price: 18.17,
+    image: 'https://picsum.photos/seed/box/400/400',
+    category: 'Möbel',
+    isAvailable: true,
+    quantity: 25,
+    taxRate: 0.19,
+    sku: 'SKU-BOX-02',
+  },
+  {
+    id: '3',
+    name: { de: 'Briefablage', en: 'Letter Tray' },
+    price: 5.52,
+    image: 'https://picsum.photos/seed/tray/400/400',
+    category: 'Büro',
+    isAvailable: false,
+    quantity: 0,
+    taxRate: 0.19,
+    sku: 'SKU-TRAY-03',
+  },
+];
+
 
 export default function POSPage() {
-  const [language, setLanguage] = useState<"de" | "en">("de");
-  const [cart, setCart] = useState<Product[]>([]);
+  const [mode, setMode] = useState<PosMode>('retail');
+  const [language, setLanguage] = useState<'de' | 'en'>('de');
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [tenantId, setTenantId] = useState<string | null>(null);
+  
+  const { openDrawerDialog } = useCashDrawer();
+  const [isPaymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [activeTransactionId, setActiveTransactionId] = useState<string | null>(null);
+  const [qrCodeData, setQrCodeData] = useState<string | null>(null);
 
-  const t = translations[language];
 
-  const products: Product[] = [
-    {
-      id: "1",
-      name: { de: "Schreibtischlampe", en: "Desk Lamp" },
-      price: 46.0,
-      image: "https://picsum.photos/seed/lamp/400/400",
-      category: "Möbel",
-    },
-    {
-      id: "2",
-      name: { de: "Ablagebox", en: "Storage Box" },
-      price: 18.17,
-      image: "https://picsum.photos/seed/box/400/400",
-      category: "Möbel",
-    },
-    {
-      id: "3",
-      name: { de: "Briefablage", en: "Letter Tray" },
-      price: 5.52,
-      image: "https://picsum.photos/seed/tray/400/400",
-      category: "Büro",
-    },
-  ];
-
-  const addToCart = (product: Product) => setCart([...cart, product]);
-  const removeFromCart = (id: string) => {
-    const indexToRemove = cart.findIndex((p) => p.id === id);
-    if (indexToRemove > -1) {
-      const newCart = [...cart];
-      newCart.splice(indexToRemove, 1);
-      setCart(newCart);
-    }
+  useEffect(() => {
+    const storedTenantId = localStorage.getItem('tenantId');
+    setTenantId(storedTenantId);
+  }, []);
+  
+  const addToCart = (product: Product) => {
+    setCart(prevCart => {
+      const existingItem = prevCart.find(item => item.id === product.id);
+      if (existingItem) {
+        return prevCart.map(item =>
+          item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+        );
+      } else {
+        return [...prevCart, { ...product, cartId: `${product.id}-${Date.now()}`, quantity: 1 }];
+      }
+    });
   };
 
-  const total = cart.reduce((sum, p) => sum + p.price, 0);
+  const removeFromCart = (cartId: string) => {
+    setCart(prevCart => prevCart.filter(item => item.cartId !== cartId));
+  };
+  
+  const clearCart = () => {
+    setCart([]);
+  }
+
+  const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+  const handlePaymentSuccess = (qrData: string) => {
+    setQrCodeData(qrData);
+    clearCart();
+    setActiveTransactionId(null);
+  };
+
+  if (qrCodeData) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full bg-background">
+        <Card className="p-8 text-center">
+            <CardHeader>
+                <CardTitle>Payment Successful!</CardTitle>
+                <CardDescription>Scan the QR code on your RKSV device.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <QRCode value={qrCodeData} size={256} />
+            </CardContent>
+            <CardFooter>
+                 <Button onClick={() => setQrCodeData(null)} className="w-full">New Order</Button>
+            </CardFooter>
+        </Card>
+      </div>
+    );
+  }
+
 
   return (
-    <div className="grid grid-cols-12 h-screen">
-      {/* 🧾 Left: Cart */}
-      <div className="col-span-4 bg-white border-r p-6 flex flex-col">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold">{t.cart}</h2>
-          <select
-            className="border rounded px-2 py-1"
-            value={language}
-            onChange={(e) => setLanguage(e.target.value as "de" | "en")}
-          >
-            <option value="de">Deutsch</option>
-            <option value="en">English</option>
-          </select>
+    <div className="grid grid-cols-12 h-screen bg-card text-card-foreground">
+      <div className="col-span-4 bg-background border-r flex flex-col">
+        <div className="p-4 border-b">
+           <Button onClick={openDrawerDialog} variant="outline" className="w-full">
+                <Landmark className="mr-2 h-4 w-4" />
+                Cash Drawer
+            </Button>
         </div>
-
-        <div className="flex-1 overflow-auto space-y-2">
-          {cart.map((item, index) => (
-            <div
-              key={`${item.id}-${index}`}
-              className="flex justify-between items-center border-b pb-2"
-            >
-              <div>
-                <p className="font-medium">{item.name[language]}</p>
-                <p className="text-sm text-gray-500">€ {item.price.toFixed(2)}</p>
-              </div>
-              <button
-                onClick={() => removeFromCart(item.id)}
-                className="text-red-500 hover:text-red-700"
-              >
-                ✕
-              </button>
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-4 border-t pt-4">
-          <div className="flex justify-between font-bold text-lg">
-            <span>{t.total}</span>
-            <span>€ {total.toFixed(2)}</span>
-          </div>
-          <button
-            className="w-full mt-4 bg-green-600 text-white py-2 rounded hover:bg-green-700"
-            onClick={() => alert("Payment Flow (coming soon)")}
-          >
-            💳 {t.pay}
-          </button>
-        </div>
+        <CartPanel
+          cart={cart}
+          language={language}
+          removeFromCart={removeFromCart}
+          clearCart={clearCart}
+          onPay={() => setPaymentDialogOpen(true)}
+          total={total}
+          setCart={setCart}
+          setTransactionId={setActiveTransactionId}
+        />
       </div>
 
-      {/* 🪑 Right: Products */}
-      <div className="col-span-8 bg-gray-50 p-6 overflow-auto">
-        <h2 className="text-xl font-bold mb-4">{t.products}</h2>
-        <div className="grid grid-cols-3 gap-4">
-          {products.map((p) => (
-            <div
-              key={p.id}
-              onClick={() => addToCart(p)}
-              className="bg-white shadow-sm hover:shadow-md transition cursor-pointer rounded-lg p-4"
-            >
-              <Image
-                src={p.image}
-                alt={p.name[language]}
-                width={120}
-                height={120}
-                className="mx-auto"
-                data-ai-hint="office product"
-              />
-              <p className="mt-2 font-semibold text-center">{p.name[language]}</p>
-              <p className="text-center text-gray-600 text-sm">
-                € {p.price.toFixed(2)}
-              </p>
-            </div>
-          ))}
-        </div>
+      <div className="col-span-8 flex flex-col">
+        <header className="p-4 border-b flex justify-between items-center">
+          <h2 className="text-xl font-bold">Point of Sale</h2>
+          <ModeSwitcher mode={mode} setMode={setMode} />
+        </header>
+
+        <main className="flex-1 overflow-auto p-4">
+          {mode === 'retail' ? (
+            <ProductGrid products={mockProducts} addToCart={addToCart} language={language} />
+          ) : (
+            <TableMap />
+          )}
+        </main>
       </div>
+      
+       <CashDrawerDialog />
+       {activeTransactionId && tenantId && (
+        <PaymentDialog 
+            open={isPaymentDialogOpen}
+            onOpenChange={setPaymentDialogOpen}
+            total={total}
+            tenantId={tenantId}
+            transactionId={activeTransactionId}
+            onPaymentSuccess={handlePaymentSuccess}
+        />
+       )}
     </div>
   );
 }
