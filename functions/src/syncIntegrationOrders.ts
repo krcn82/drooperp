@@ -7,7 +7,7 @@ import { Timestamp } from 'firebase-admin/firestore';
  * A scheduled function that runs every 5 minutes to poll for new orders
  * from integrated delivery platforms, in case a webhook was missed.
  */
-export const syncIntegrationOrders = onSchedule('every 5 minutes', async (event) => {
+export const syncIntegrationOrders = onSchedule({ schedule: 'every 5 minutes', timeZone: 'Europe/Berlin' }, async (event) => {
     
     console.log('Starting 5-minute integration order sync...');
     const firestore = admin.firestore();
@@ -17,7 +17,7 @@ export const syncIntegrationOrders = onSchedule('every 5 minutes', async (event)
       
       if (tenantsSnapshot.empty) {
         console.log('No active tenants found. Exiting sync job.');
-        return null;
+        return;
       }
       
       const syncPromises = tenantsSnapshot.docs.map(tenantDoc => 
@@ -27,11 +27,11 @@ export const syncIntegrationOrders = onSchedule('every 5 minutes', async (event)
       await Promise.all(syncPromises);
       
       console.log('Successfully completed integration order sync for all tenants.');
-      return null;
+      return;
 
     } catch (error) {
       console.error('Error running integration order sync:', error);
-      return null;
+      return;
     }
 });
 
