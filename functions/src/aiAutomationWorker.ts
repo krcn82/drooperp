@@ -7,7 +7,10 @@ import { Timestamp } from 'firebase-admin/firestore';
  * A daily scheduled function that analyzes tenant data and sends insights.
  * Runs every day at 7:00 AM Pacific Time.
  */
-export const aiAutomationWorker = onSchedule('0 7 * * *', async (context) => {
+export const aiAutomationWorker = onSchedule({
+    schedule: '0 7 * * *',
+    timeZone: 'America/Los_Angeles',
+}, async (context) => {
     
     console.log('Starting daily AI Automation Worker...');
     const firestore = admin.firestore();
