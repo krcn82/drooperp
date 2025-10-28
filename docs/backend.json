@@ -751,6 +751,19 @@
             "createdAt": { "type": "string", "format": "date-time" }
         },
         "required": ["date", "result", "status", "createdAt"]
+    },
+    "SystemError": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "System Error",
+        "type": "object",
+        "description": "Represents a system error log entry.",
+        "properties": {
+            "fn": { "type": "string", "description": "The name of the function where the error occurred." },
+            "details": { "type": "string", "description": "A detailed error message or stack trace." },
+            "severity": { "type": "string", "enum": ["warning", "error", "critical"] },
+            "createdAt": { "type": "string", "format": "date-time" }
+        },
+        "required": ["fn", "details", "severity", "createdAt"]
     }
   },
   "auth": {
@@ -854,6 +867,12 @@
             "$ref": "#/entities/FinanzOnlineLog"
         },
         "description": "Sub-collection for logging FinanzOnline API submissions."
+    },
+    "/tenants/{tenantId}/systemErrors/{errorId}": {
+        "schema": {
+            "$ref": "#/entities/SystemError"
+        },
+        "description": "Sub-collection for logging critical system errors within a tenant."
     },
     "/global/plans/{planId}": {
       "schema": {

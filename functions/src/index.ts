@@ -39,3 +39,4 @@ export { sendDailySystemReport } from './sendDailySystemReport';
 // export { sendEmailNotification } from './email-notifications';
 export * from "./pos";
 export { generateZReport } from "./pos/generateZReport";
+export { logError } from './lib/error-logging';
