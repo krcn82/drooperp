@@ -3,7 +3,6 @@ import * as admin from "firebase-admin";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { sendEmailNotification } from "./email-notifications";
 
-admin.initializeApp();
 const db = admin.firestore();
 
 interface LogEntry {

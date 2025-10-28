@@ -37,7 +37,6 @@ exports.sendDailySystemReport = void 0;
 const admin = __importStar(require("firebase-admin"));
 const scheduler_1 = require("firebase-functions/v2/scheduler");
 const email_notifications_1 = require("./email-notifications");
-admin.initializeApp();
 const db = admin.firestore();
 exports.sendDailySystemReport = (0, scheduler_1.onSchedule)({ schedule: "0 7 * * *", timeZone: "Europe/Istanbul" }, async (event) => {
     try {
@@ -60,8 +59,9 @@ exports.sendDailySystemReport = (0, scheduler_1.onSchedule)({ schedule: "0 7 * *
             const status = d.status || "unknown";
             if (!summary[name])
                 summary[name] = { success: 0, error: 0 };
-            if (status === "success")
+            if (status === "success") {
                 summary[name].success++;
+            }
             else if (status === "error") {
                 summary[name].error++;
                 const ts = d.timestamp ? d.timestamp.toDate() : new Date(0);
@@ -79,8 +79,10 @@ exports.sendDailySystemReport = (0, scheduler_1.onSchedule)({ schedule: "0 7 * *
             const s = summary[fn];
             report += `• ${fn} — ${s.success} success, ${s.error} errors\n`;
         }
-        if (lastError !== null) {
-            report += `\n⚠️ Last error:\n• ${lastError.fn} → ${lastError.details} (${lastError.time})`;
+        // 💡 Tip dönüşümüyle TypeScript'in 'never' hatasını önlüyoruz
+        const err = lastError;
+        if (err) {
+            report += `\n⚠️ Last error:\n• ${err.fn} → ${err.details} (${err.time})`;
         }
         await (0, email_notifications_1.sendEmailNotification)(`Daily System Report — ${new Date().toLocaleDateString("tr-TR")}`, report);
         console.log("✅ Daily system report email sent successfully.");
