@@ -63,7 +63,7 @@ export default function CartPanel({ cart, language, removeFromCart, clearCart, o
     
     setIsSubmitting(true);
     const transactionData = {
-        items: cart.map(item => ({ name: item.name.en, qty: item.quantity, price: item.price, productId: item.id })),
+        items: cart.map(item => ({ name: item.name.en, qty: item.quantity, price: item.price, productId: item.id, taxRate: item.taxRate })),
         cashierUserId: user.uid,
         amountTotal: total,
         type: 'retail' as const, // Hardcoded for now, should be dynamic with restaurant mode
