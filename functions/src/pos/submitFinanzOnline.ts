@@ -11,12 +11,11 @@ if (!admin.apps.length) admin.initializeApp();
  */
 export async function submitDEPToFinanzOnline(tenantId: string, date: string) {
   const db = admin.firestore();
-  let config;
 
   try {
     const configSnap = await db.collection(`tenants/${tenantId}/rksvConfig`).limit(1).get();
     if (configSnap.empty) throw new Error("Keine RKSV-Konfiguration gefunden.");
-    config = configSnap.docs[0].data();
+    const config = configSnap.docs[0].data();
 
     const storage = admin.storage().bucket();
     const fileName = `exports/${tenantId}/DEP-${date}.xml`;
