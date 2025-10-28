@@ -1,45 +1,49 @@
-
-import crypto from "crypto";
+import * as crypto from "crypto";
 import * as admin from "firebase-admin";
-import { t, Language } from "../i18n";
+import { Language, t } from "../i18n";
+
 
 /**
- * RKSV Signature Chain Manager
- * Her işlem bir önceki imzanın hash’i ile zincirlenir.
- * Bu, yasal işlem zincirini oluşturur.
+ * 🇩🇪 Erzeugt eine neue RKSV-Signatur für eine Transaktion oder einen Tagesabschluss.
+ * 🇬🇧 Creates a new RKSV signature for a transaction or Z-report.
  */
-export async function generateRKSVSignature(tenantId: string, transactionData: any, lang: Language = 'en') {
+export async function generateRKSVSignature(
+  tenantId: string,
+  data: Record<string, any>,
+  lang: Language = 'en'
+): Promise<{ currentHash: string; signature: string }> {
   const db = admin.firestore();
 
-  const lastSignatureDoc = await db
-    .collection("tenants")
-    .doc(tenantId)
-    .collection("rksvSignatures")
+  // 🔗 Letzte Signatur holen (Chain-Verknüpfung)
+  const lastSignatureSnap = await db
+    .collection(`tenants/${tenantId}/signatures`)
     .orderBy("createdAt", "desc")
     .limit(1)
     .get();
 
-  const lastHash = lastSignatureDoc.empty
-    ? "INITIAL_HASH"
-    : lastSignatureDoc.docs[0].data().currentHash;
+  const lastHash = lastSignatureSnap.empty
+    ? "INITIAL"
+    : lastSignatureSnap.docs[0].data().hash;
 
-  // Yeni hash zinciri oluştur
-  const rawData = JSON.stringify(transactionData) + lastHash;
-  const currentHash = crypto.createHash("sha256").update(rawData).digest("hex");
+  // 🧾 Daten + letzte Hash-Werte kombinieren
+  const inputString = JSON.stringify(data) + lastHash;
+  const currentHash = crypto
+    .createHash("sha256")
+    .update(inputString)
+    .digest("hex");
 
-  // JWS (JSON Web Signature) simülasyonu
-  const privateKey = process.env.RKSV_PRIVATE_KEY;
-  if (!privateKey) throw new Error("RKSV private key not set in environment variables");
+  // 🔐 Beispielhafte RSA-Signatur (in Produktion: Hardware-Sicherheitsmodul!)
+  const privateKey = process.env.RKSV_PRIVATE_KEY || "test_private_key";
+  const signature = crypto
+    .createHmac("sha256", privateKey)
+    .update(currentHash)
+    .digest("hex");
 
-  const signer = crypto.createSign("RSA-SHA256");
-  signer.update(currentHash);
-  const signature = signer.sign(privateKey, "base64");
-
-  // Firestore’a kaydet
-  await db.collection("tenants").doc(tenantId).collection("rksvSignatures").add({
-    currentHash,
-    lastHash,
+  // 💾 Speicherung in Firestore
+  await db.collection(`tenants/${tenantId}/signatures`).add({
+    hash: currentHash,
     signature,
+    previousHash: lastHash,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   });
   

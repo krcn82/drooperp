@@ -37,17 +37,25 @@ exports.generateZReport = void 0;
 const admin = __importStar(require("firebase-admin"));
 const scheduler_1 = require("firebase-functions/v2/scheduler");
 const rksvSignature_1 = require("./rksvSignature");
-exports.generateZReport = (0, scheduler_1.onSchedule)({
+const i18n_1 = require("../i18n");
+// 🕒 Täglicher Zeitplan: Jeden Tag um 23:00 Uhr (Wiener Zeit)
+const scheduleOptions = {
     schedule: "0 23 * * *",
     timeZone: "Europe/Vienna",
-}, async (event) => {
+};
+/**
+ * 🇩🇪 Funktion: Generiert den täglichen RKSV-konformen Tagesabschluss (Z-Bericht)
+ * 🇬🇧 Function: Generates the daily RKSV-compliant Z-Report
+ */
+exports.generateZReport = (0, scheduler_1.onSchedule)(scheduleOptions, async (event) => {
     const db = admin.firestore();
+    console.info((0, i18n_1.t)("de", "DAILY_REPORT_STARTED"));
     const tenantsSnap = await db.collection("tenants").get();
     for (const tenant of tenantsSnap.docs) {
         const tenantId = tenant.id;
         const transactionsRef = db.collection(`tenants/${tenantId}/transactions`);
         const zReportsRef = db.collection(`tenants/${tenantId}/zReports`);
-        // 📦 Get transactions for the day
+        // 📅 Zeitraum für den heutigen Tag
         const startOfDay = new Date();
         startOfDay.setHours(0, 0, 0, 0);
         const endOfDay = new Date();
@@ -57,31 +65,30 @@ exports.generateZReport = (0, scheduler_1.onSchedule)({
             .where("createdAt", "<=", endOfDay)
             .get();
         if (transactionsSnap.empty) {
-            console.info(`No transactions found for ${tenantId} on ${startOfDay.toDateString()}`);
+            console.info(`${(0, i18n_1.t)("de", "NO_TRANSACTIONS")} (${tenantId})`);
             continue;
         }
-        // 💰 Calculate total amount
+        // 💰 Gesamtsumme berechnen
         let totalAmount = 0;
         transactionsSnap.forEach((doc) => {
             totalAmount += doc.data().totalAmount || 0;
         });
-        // 🔐 Create end-of-day summary hash
+        // 🔐 RKSV-Signatur und Hash erzeugen
         const summaryData = {
             date: startOfDay.toISOString().split("T")[0],
             totalTransactions: transactionsSnap.size,
             totalAmount,
         };
         const { currentHash, signature } = await (0, rksvSignature_1.generateRKSVSignature)(tenantId, summaryData);
-        // 🧾 Save to Firestore
+        // 🧾 Tagesabschluss speichern
         await zReportsRef.add({
             ...summaryData,
             rksvHash: currentHash,
             rksvSignature: signature,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
-        console.info(`✅ Z-Report generated for tenant ${tenantId} (${transactionsSnap.size} transactions)`);
+        console.info(`✅ ${(0, i18n_1.t)("de", "DAILY_REPORT_COMPLETED")} [${tenantId}]`);
     }
-    console.info("🎯 Daily RKSV Z-Reports successfully generated.");
-    return null;
+    console.info("🎯 Alle Z-Berichte erfolgreich erstellt und signiert.");
 });
 //# sourceMappingURL=generateZReport.js.map

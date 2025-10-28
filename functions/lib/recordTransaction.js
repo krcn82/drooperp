@@ -38,11 +38,12 @@ const admin = __importStar(require("firebase-admin"));
 const https_1 = require("firebase-functions/v2/https");
 const https_2 = require("firebase-functions/v2/https");
 const rksvSignature_1 = require("./pos/rksvSignature");
+const i18n_1 = require("./i18n");
 if (!admin.apps.length) {
     admin.initializeApp();
 }
 exports.recordTransaction = (0, https_1.onCall)({ region: "us-central1" }, async (request) => {
-    const { tenantId, transaction } = request.data;
+    const { tenantId, transaction, lang = "en" } = request.data;
     if (!tenantId || !transaction) {
         throw new https_2.HttpsError("invalid-argument", "tenantId and transaction are required.");
     }
@@ -55,14 +56,14 @@ exports.recordTransaction = (0, https_1.onCall)({ region: "us-central1" }, async
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
     // 💬 2️⃣ RKSV imzası oluşturuluyor
-    const { currentHash, signature } = await (0, rksvSignature_1.generateRKSVSignature)(tenantId, transaction);
+    const { currentHash, signature } = await (0, rksvSignature_1.generateRKSVSignature)(tenantId, transaction, lang);
     // 💬 3️⃣ İşleme RKSV verileri ekleniyor
     await transactionRef.update({
         rksvSignature: signature,
         rksvHash: currentHash,
         rksvTimestamp: admin.firestore.FieldValue.serverTimestamp(),
     });
-    console.info(`✅ Transaction ${transactionRef.id} processed successfully for tenant ${tenantId}`);
+    console.info(`[${lang.toUpperCase()}] ${(0, i18n_1.t)(lang, "TRANSACTION_PROCESSED")}: ${transactionRef.id} for tenant ${tenantId}`);
     return {
         status: "success",
         transactionId: transactionRef.id,

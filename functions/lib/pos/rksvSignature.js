@@ -39,12 +39,13 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.generateRKSVSignature = generateRKSVSignature;
 const crypto_1 = __importDefault(require("crypto"));
 const admin = __importStar(require("firebase-admin"));
+const i18n_1 = require("../i18n");
 /**
  * RKSV Signature Chain Manager
  * Her işlem bir önceki imzanın hash’i ile zincirlenir.
  * Bu, yasal işlem zincirini oluşturur.
  */
-async function generateRKSVSignature(tenantId, transactionData) {
+async function generateRKSVSignature(tenantId, transactionData, lang = 'en') {
     const db = admin.firestore();
     const lastSignatureDoc = await db
         .collection("tenants")
@@ -73,6 +74,7 @@ async function generateRKSVSignature(tenantId, transactionData) {
         signature,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
+    console.info(`[${lang.toUpperCase()}] ${(0, i18n_1.t)(lang, "RKSV_SIGNATURE_CREATED")}`);
     return { currentHash, signature };
 }
 //# sourceMappingURL=rksvSignature.js.map
