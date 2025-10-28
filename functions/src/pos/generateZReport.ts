@@ -1,57 +1,16 @@
 import * as admin from "firebase-admin";
-import { generateRKSVSignature } from "./rksvSignature";
+import { onSchedule, ScheduleOptions } from "firebase-functions/v2/scheduler";
+import { closeDay } from "./closeDay";
 
-if (!admin.apps.length) {
-  admin.initializeApp();
-}
+// 🕒 Täglicher Zeitplan: Jeden Tag um 23:00 Uhr (Wiener Zeit)
+const scheduleOptions: ScheduleOptions = {
+  schedule: "0 23 * * *",
+  timeZone: "Europe/Vienna",
+};
 
-/**
- * 🇩🇪 Führt den täglichen RKSV-konformen Tagesabschluss durch.
- * 🇬🇧 Executes the daily RKSV-compliant end-of-day closing.
- */
-export async function closeDay(tenantId: string): Promise<void> {
-  const db = admin.firestore();
-  const transactionsRef = db.collection(`tenants/${tenantId}/transactions`);
-  const zReportsRef = db.collection(`tenants/${tenantId}/zReports`);
-
-  // 📅 Zeitraum (heutiger Tag)
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  const end = new Date();
-  end.setHours(23, 59, 59, 999);
-
-  const transactionsSnap = await transactionsRef
-    .where("createdAt", ">=", start)
-    .where("createdAt", "<=", end)
-    .get();
-
-  if (transactionsSnap.empty) {
-    console.log(`Keine Transaktionen für ${tenantId} gefunden.`);
-    return;
+export const generateZReport = onSchedule(scheduleOptions, async (event) => {
+  const tenantsSnap = await admin.firestore().collection("tenants").get();
+  for (const tenant of tenantsSnap.docs) {
+    await closeDay(tenant.id);
   }
-
-  // 💶 Tagesumsatz berechnen
-  let total = 0;
-  transactionsSnap.forEach((t) => {
-    total += t.data().totalAmount || 0;
-  });
-
-  const reportData = {
-    date: start.toISOString().split("T")[0],
-    totalTransactions: transactionsSnap.size,
-    totalAmount: total,
-  };
-
-  // 🔐 RKSV-Signatur
-  const { currentHash, signature } = await generateRKSVSignature(tenantId, reportData);
-
-  // 🧾 Z-Bericht speichern
-  await zReportsRef.add({
-    ...reportData,
-    rksvHash: currentHash,
-    rksvSignature: signature,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-  });
-
-  console.log(`✅ Tagesabschluss für ${tenantId} abgeschlossen.`);
-}
+});

@@ -1,7 +1,6 @@
-import * as crypto from "crypto";
+import crypto from "crypto";
 import * as admin from "firebase-admin";
 import { Language, t } from "../i18n";
-
 
 /**
  * 🇩🇪 Erzeugt eine neue RKSV-Signatur für eine Transaktion oder einen Tagesabschluss.
