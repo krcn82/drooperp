@@ -50,8 +50,9 @@ export const sendDailySystemReport = onSchedule(
 
         if (!summary[name]) summary[name] = { success: 0, error: 0 };
 
-        if (status === "success") summary[name].success++;
-        else if (status === "error") {
+        if (status === "success") {
+          summary[name].success++;
+        } else if (status === "error") {
           summary[name].error++;
 
           const ts = d.timestamp ? d.timestamp.toDate() : new Date(0);
@@ -72,8 +73,10 @@ export const sendDailySystemReport = onSchedule(
         report += `• ${fn} — ${s.success} success, ${s.error} errors\n`;
       }
 
-      if (lastError !== null) {
-        report += `\n⚠️ Last error:\n• ${lastError.fn} → ${lastError.details} (${lastError.time})`;
+      // 💡 Tip dönüşümüyle TypeScript'in 'never' hatasını önlüyoruz
+      const err = lastError as ErrorDetails | null;
+      if (err) {
+        report += `\n⚠️ Last error:\n• ${err.fn} → ${err.details} (${err.time})`;
       }
 
       await sendEmailNotification(
