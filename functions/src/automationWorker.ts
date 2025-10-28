@@ -52,7 +52,7 @@ const addAuditLog = (
 /**
  * Scheduled function that runs every 15 minutes to perform automated checks.
  */
-export const automationWorker = onSchedule('every 15 minutes', async (context) => {
+export const automationWorker = onSchedule({ schedule: "every 15 minutes", timeZone: "Europe/Berlin" }, async (event) => {
     console.log('Starting 15-minute automation worker...');
     const firestore = admin.firestore();
     
@@ -61,7 +61,7 @@ export const automationWorker = onSchedule('every 15 minutes', async (context) =
       
       if (tenantsSnapshot.empty) {
         console.log('No active tenants found.');
-        return null;
+        return;
       }
       
       const workerPromises = tenantsSnapshot.docs.map(tenantDoc => 
@@ -71,11 +71,11 @@ export const automationWorker = onSchedule('every 15 minutes', async (context) =
       await Promise.all(workerPromises);
       
       console.log('Successfully completed automation worker for all active tenants.');
-      return null;
+      return;
 
     } catch (error) {
       console.error('Error running automation worker:', error);
-      return null;
+      return;
     }
 });
 
