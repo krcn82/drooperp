@@ -64,21 +64,22 @@ exports.sendDailySystemReport = (0, scheduler_1.onSchedule)({ schedule: "0 7 * *
                 summary[name].success++;
             else if (status === "error") {
                 summary[name].error++;
-                if (!lastError || d.timestamp?.toDate() > new Date(lastError.time)) {
+                const ts = d.timestamp ? d.timestamp.toDate() : new Date(0);
+                if (!lastError || ts > new Date(lastError.time)) {
                     lastError = {
                         fn: name,
                         details: d.details || "No details",
-                        time: d.timestamp?.toDate().toLocaleString("tr-TR") || "",
+                        time: ts.toLocaleString("tr-TR"),
                     };
                 }
             }
         });
         let report = "✅ All systems operational.\n\nFunction summary (last 24h):\n";
-        Object.keys(summary).forEach((fn) => {
+        for (const fn of Object.keys(summary)) {
             const s = summary[fn];
             report += `• ${fn} — ${s.success} success, ${s.error} errors\n`;
-        });
-        if (lastError) {
+        }
+        if (lastError !== null) {
             report += `\n⚠️ Last error:\n• ${lastError.fn} → ${lastError.details} (${lastError.time})`;
         }
         await (0, email_notifications_1.sendEmailNotification)(`Daily System Report — ${new Date().toLocaleDateString("tr-TR")}`, report);

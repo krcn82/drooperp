@@ -1,3 +1,4 @@
+
 import * as admin from "firebase-admin";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { sendEmailNotification } from "./email-notifications";
@@ -48,26 +49,30 @@ export const sendDailySystemReport = onSchedule(
         const status = d.status || "unknown";
 
         if (!summary[name]) summary[name] = { success: 0, error: 0 };
+
         if (status === "success") summary[name].success++;
         else if (status === "error") {
           summary[name].error++;
-          if (!lastError || d.timestamp?.toDate() > new Date(lastError.time)) {
+
+          const ts = d.timestamp ? d.timestamp.toDate() : new Date(0);
+
+          if (!lastError || ts > new Date(lastError.time)) {
             lastError = {
               fn: name,
               details: d.details || "No details",
-              time: d.timestamp?.toDate().toLocaleString("tr-TR") || "",
+              time: ts.toLocaleString("tr-TR"),
             };
           }
         }
       });
 
       let report = "✅ All systems operational.\n\nFunction summary (last 24h):\n";
-      Object.keys(summary).forEach((fn) => {
+      for (const fn of Object.keys(summary)) {
         const s = summary[fn];
         report += `• ${fn} — ${s.success} success, ${s.error} errors\n`;
-      });
+      }
 
-      if (lastError) {
+      if (lastError !== null) {
         report += `\n⚠️ Last error:\n• ${lastError.fn} → ${lastError.details} (${lastError.time})`;
       }
 
