@@ -1,22 +1,36 @@
 /**
  * Initializes Firebase Admin SDK and exports all Cloud Functions.
+ * This file acts as the main entry point for deploying functions.
+ * It is structured to explicitly export each function for clarity.
  */
 import * as admin from 'firebase-admin';
 
+// Initialize Firebase Admin SDK
+// This is done once and the instance is shared across all functions
 admin.initializeApp();
 
-// Export functions from their individual files
-export * from './recordTransaction';
-export * from './syncOfflineTransactions';
-export * from './generateDatevExport';
-export * from './restaurant';
-export * from './aiAutomationWorker';
-export * from './generateReport';
-export * from './webhooks';
-export * from './syncIntegrationOrders';
-export * from './syncMenu';
-export * from './automationWorker';
-export * from './sendNotificationAlert';
-export * from './stripe';
-export * from './paymentDevice';
-export * from './generateZReport';
+// AI Automation Workers
+export { aiAutomationWorker } from './aiAutomationWorker';
+export { automationWorker } from './automationWorker';
+
+// Data Export and Reporting
+export { generateDatevExport } from './generateDatevExport';
+export { generateReport } from './generateReport';
+export { generateZReport } from './generateZReport';
+
+// Payment Processing
+export { processStripePayment, stripeWebhook } from './stripe';
+export { startDevicePayment, paymentDeviceCallback } from './paymentDevice';
+
+// Restaurant & POS
+export { createKdsOrder, updateKdsOrderStatus, onKdsOrderUpdate } from './restaurant';
+export { recordTransaction } from './recordTransaction';
+export { syncOfflineTransactions } from './syncOfflineTransactions';
+
+// Integrations & Webhooks
+export { integrationWebhook } from './webhooks';
+export { syncIntegrationOrders } from './syncIntegrationOrders';
+export { syncMenuWithPlatform } from './syncMenu';
+
+// Notifications
+export { onNotificationCreate } from './sendNotificationAlert';
