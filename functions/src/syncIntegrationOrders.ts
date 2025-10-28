@@ -1,3 +1,4 @@
+
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as admin from 'firebase-admin';
 import { Timestamp } from 'firebase-admin/firestore';
@@ -6,7 +7,7 @@ import { Timestamp } from 'firebase-admin/firestore';
  * A scheduled function that runs every 5 minutes to poll for new orders
  * from integrated delivery platforms, in case a webhook was missed.
  */
-export const syncIntegrationOrders = onSchedule('every 5 minutes', async (context) => {
+export const syncIntegrationOrders = onSchedule('every 5 minutes', async (event) => {
     
     console.log('Starting 5-minute integration order sync...');
     const firestore = admin.firestore();
