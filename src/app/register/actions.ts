@@ -1,8 +1,7 @@
-
 'use server';
 
 import { z } from 'zod';
-import { initializeFirebase, setDocumentNonBlocking } from '@/firebase';
+import { initializeFirebase, setDocumentNonBlocking, addDocumentNonBlocking } from '@/firebase';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { doc, serverTimestamp } from 'firebase/firestore';
 import { FirebaseError } from 'firebase/app';
