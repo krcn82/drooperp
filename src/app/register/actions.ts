@@ -1,3 +1,4 @@
+
 'use server';
 
 import { z } from 'zod';
@@ -75,13 +76,14 @@ export async function registerTenant(prevState: State, formData: FormData): Prom
   };
   setDocumentNonBlocking(tenantRef, tenantData, {});
 
-  // 3. Create the user document within the tenant's subcollection
+  // 3. Create the user document within the tenant's subcollection with an 'admin' role
   const userRef = doc(firestore, `tenants/${tenantId}/users`, user.uid);
   const userData = {
     id: user.uid,
     email: user.email,
     role: 'admin',
     tenantId: tenantId,
+    status: 'active',
   };
   setDocumentNonBlocking(userRef, userData, {});
     
