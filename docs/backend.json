@@ -413,11 +413,36 @@
         },
         "status": {
           "type": "string",
-          "enum": ["active", "inactive"],
+          "enum": [
+            "active",
+            "inactive"
+          ],
           "description": "The status of the RKSV configuration."
+        },
+        "useSandbox": {
+            "type": "boolean",
+            "description": "Flag to use the FinanzOnline sandbox environment."
+        },
+        "finanzOnlineSubId": {
+            "type": "string",
+            "description": "The subscriber ID for FinanzOnline API."
+        },
+        "finanzOnlineUser": {
+            "type": "string",
+            "description": "The user ID for FinanzOnline API."
+        },
+        "finanzOnlinePassword": {
+            "type": "string",
+            "description": "The password for FinanzOnline API. Should be stored in Secret Manager."
         }
       },
-      "required": ["kassenId", "certificate", "privateKey", "serialNumber", "status"]
+      "required": [
+        "kassenId",
+        "certificate",
+        "privateKey",
+        "serialNumber",
+        "status"
+      ]
     },
     "Signature": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -443,7 +468,12 @@
           "description": "Timestamp when the signature was created."
         }
       },
-      "required": ["hash", "signature", "previousHash", "createdAt"]
+      "required": [
+        "hash",
+        "signature",
+        "previousHash",
+        "createdAt"
+      ]
     },
     "Integration": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -708,6 +738,19 @@
         "fileUrl": { "type": "string", "description": "URL to the generated PDF/CSV file in Cloud Storage." }
       },
       "required": ["id", "tenantId", "type", "generatedAt", "data"]
+    },
+    "FinanzOnlineLog": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "FinanzOnline Submission Log",
+        "type": "object",
+        "description": "Logs the result of a submission to the FinanzOnline API.",
+        "properties": {
+            "date": { "type": "string", "format": "date" },
+            "result": { "type": "string", "description": "The raw response from the FinanzOnline API." },
+            "status": { "type": "string", "enum": ["success", "error"] },
+            "createdAt": { "type": "string", "format": "date-time" }
+        },
+        "required": ["date", "result", "status", "createdAt"]
     }
   },
   "auth": {
@@ -806,6 +849,12 @@
       },
       "description": "Sub-collection for generated reports."
     },
+    "/tenants/{tenantId}/finanzOnlineLogs/{logId}": {
+        "schema": {
+            "$ref": "#/entities/FinanzOnlineLog"
+        },
+        "description": "Sub-collection for logging FinanzOnline API submissions."
+    },
     "/global/plans/{planId}": {
       "schema": {
         "$ref": "#/entities/Plan"
@@ -844,4 +893,3 @@
     }
   }
 }
-    

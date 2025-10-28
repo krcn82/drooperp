@@ -5,6 +5,7 @@ import { paymentDeviceCallback } from "./paymentDeviceCallback";
 import { generateZReport } from "./generateZReport";
 import { processStripePayment } from "./stripe";
 import { createFinanzOnlineExport } from "./createFinanzOnlineExport";
+import { submitDEPToFinanzOnline } from "./submitFinanzOnline";
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -16,5 +17,6 @@ export {
   paymentDeviceCallback,
   generateZReport,
   processStripePayment,
-  createFinanzOnlineExport
+  createFinanzOnlineExport,
+  submitDEPToFinanzOnline
 };
