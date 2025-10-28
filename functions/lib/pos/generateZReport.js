@@ -37,18 +37,17 @@ exports.generateZReport = void 0;
 const admin = __importStar(require("firebase-admin"));
 const scheduler_1 = require("firebase-functions/v2/scheduler");
 const rksvSignature_1 = require("./rksvSignature");
-if (!admin.apps.length) {
-    admin.initializeApp();
-}
-exports.generateZReport = (0, scheduler_1.onSchedule)({ schedule: "0 23 * * *", timeZone: "Europe/Vienna" }, // Her gün saat 23:00'te çalışır
-async () => {
+exports.generateZReport = (0, scheduler_1.onSchedule)({
+    schedule: "0 23 * * *",
+    timeZone: "Europe/Vienna",
+}, async (event) => {
     const db = admin.firestore();
     const tenantsSnap = await db.collection("tenants").get();
     for (const tenant of tenantsSnap.docs) {
         const tenantId = tenant.id;
         const transactionsRef = db.collection(`tenants/${tenantId}/transactions`);
         const zReportsRef = db.collection(`tenants/${tenantId}/zReports`);
-        // 📦 Günün işlemlerini al
+        // 📦 Get transactions for the day
         const startOfDay = new Date();
         startOfDay.setHours(0, 0, 0, 0);
         const endOfDay = new Date();
@@ -61,19 +60,19 @@ async () => {
             console.info(`No transactions found for ${tenantId} on ${startOfDay.toDateString()}`);
             continue;
         }
-        // 💰 Toplam tutar hesapla
+        // 💰 Calculate total amount
         let totalAmount = 0;
         transactionsSnap.forEach((doc) => {
             totalAmount += doc.data().totalAmount || 0;
         });
-        // 🔐 Gün sonu özet hash oluştur
+        // 🔐 Create end-of-day summary hash
         const summaryData = {
             date: startOfDay.toISOString().split("T")[0],
             totalTransactions: transactionsSnap.size,
             totalAmount,
         };
         const { currentHash, signature } = await (0, rksvSignature_1.generateRKSVSignature)(tenantId, summaryData);
-        // 🧾 Firestore’a kaydet
+        // 🧾 Save to Firestore
         await zReportsRef.add({
             ...summaryData,
             rksvHash: currentHash,
