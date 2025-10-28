@@ -1,3 +1,4 @@
+
 "use client";
 import { useState, useEffect } from "react";
 import CartPanel from "./components/CartPanel";
@@ -6,9 +7,7 @@ import ModeSwitcher from "./components/ModeSwitcher";
 import TableMap from "./components/TableMap";
 import CategoryTabs from "./components/CategoryTabs";
 import { type Product, type CartItem } from "./types";
-import { translations } from '@/lib/pos-translations';
 import { useCashDrawer } from '@/hooks/use-cash-drawer';
-import CashDrawerDialog from '@/components/pos/CashDrawerDialog';
 import PaymentDialog from '@/components/pos/PaymentDialog';
 import { Button } from '@/components/ui/button';
 import { Landmark } from 'lucide-react';
@@ -55,7 +54,7 @@ export default function POSPage() {
   }
 
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const taxes = cart.reduce((sum, item) => sum + (item.price * item.quantity * item.taxRate), 0);
+  const taxes = cart.reduce((sum, item) => sum + (item.price * item.quantity * (item.taxRate || 0)), 0);
   const total = subtotal + taxes;
 
 
@@ -101,7 +100,6 @@ export default function POSPage() {
           removeFromCart={removeFromCart}
           clearCart={clearCart}
           onPay={() => setPaymentDialogOpen(true)}
-          total={total}
           setCart={setCart}
           setTransactionId={setActiveTransactionId}
           mode={mode}
@@ -129,7 +127,6 @@ export default function POSPage() {
         </main>
       </div>
       
-       <CashDrawerDialog />
        {activeTransactionId && tenantId && (
         <PaymentDialog 
             open={isPaymentDialogOpen}

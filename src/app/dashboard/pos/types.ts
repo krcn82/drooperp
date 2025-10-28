@@ -1,13 +1,14 @@
+
 export type Product = {
   id: string;
   name: { de: string; en: string };
   price: number;
+  unit: 'Stück' | 'Einheit';
+  categoryId: string;
   imageUrl: string;
-  category: string;
-  isAvailable: boolean;
-  quantity: number;
   taxRate: number;
   sku: string;
+  isAvailable: boolean;
 };
 
 export type CartItem = Product & { cartId: string; quantity: number };

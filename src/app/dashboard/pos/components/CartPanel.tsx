@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState } from 'react';
@@ -18,13 +19,12 @@ interface CartPanelProps {
   removeFromCart: (cartId: string) => void;
   clearCart: () => void;
   onPay: () => void;
-  total: number;
   setCart: React.Dispatch<React.SetStateAction<CartItem[]>>;
   setTransactionId: (id: string) => void;
   mode: 'retail' | 'restaurant';
 }
 
-export default function CartPanel({ cart, language, removeFromCart, clearCart, onPay, total, setCart, setTransactionId, mode }: CartPanelProps) {
+export default function CartPanel({ cart, language, removeFromCart, clearCart, onPay, setCart, setTransactionId, mode }: CartPanelProps) {
   const t = translations[language];
   const { user } = useUser();
   const { toast } = useToast();
@@ -65,7 +65,7 @@ export default function CartPanel({ cart, language, removeFromCart, clearCart, o
     setIsSubmitting(true);
     
     const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    const taxes = cart.reduce((sum, item) => sum + (item.price * item.quantity * item.taxRate), 0);
+    const taxes = cart.reduce((sum, item) => sum + (item.price * item.quantity * (item.taxRate || 0)), 0);
 
     const transactionData = {
         mode: mode,
@@ -74,7 +74,7 @@ export default function CartPanel({ cart, language, removeFromCart, clearCart, o
             name: { de: item.name.de, en: item.name.en },
             qty: item.quantity, 
             price: item.price, 
-            taxRate: item.taxRate 
+            taxRate: item.taxRate || 0
         })),
         totals: {
             subtotal: subtotal,
@@ -84,7 +84,6 @@ export default function CartPanel({ cart, language, removeFromCart, clearCart, o
         cashierUserId: user.uid,
     };
     
-    // The total passed in props already includes taxes, let's use the calculated one
     const result = await recordTransaction(tenantId, transactionData);
     
     if (result.success && result.transactionId) {
@@ -102,7 +101,7 @@ export default function CartPanel({ cart, language, removeFromCart, clearCart, o
   }
 
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const taxes = cart.reduce((sum, item) => sum + (item.price * item.quantity * item.taxRate), 0);
+  const taxes = cart.reduce((sum, item) => sum + (item.price * item.quantity * (item.taxRate || 0)), 0);
   const grandTotal = subtotal + taxes;
 
 
@@ -150,7 +149,7 @@ export default function CartPanel({ cart, language, removeFromCart, clearCart, o
                 <span>€ {subtotal.toFixed(2)}</span>
             </div>
              <div className="flex justify-between">
-                <span>Taxes</span>
+                <span>{t.taxes}</span>
                 <span>€ {taxes.toFixed(2)}</span>
             </div>
         </div>

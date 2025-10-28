@@ -1,3 +1,4 @@
+
 'use client';
 
 import React from 'react';
@@ -23,16 +24,13 @@ export default function ProductGrid({ tenantId, categoryId, addToCart, language 
   const productsQuery = useMemoFirebase(() => {
     if (!firestore || !tenantId) return null;
     
-    const baseQuery = query(
-        collection(firestore, `tenants/${tenantId}/products`), 
-        where('isAvailable', '==', true)
-    );
+    let q: Query = collection(firestore, `tenants/${tenantId}/products`);
 
     if (categoryId) {
-        return query(baseQuery, where('categoryId', '==', categoryId));
+        q = query(q, where('categoryId', '==', categoryId));
     }
     
-    return baseQuery;
+    return q;
   }, [firestore, tenantId, categoryId]);
 
   const { data: products, isLoading } = useCollection<Product>(productsQuery);
@@ -68,7 +66,7 @@ export default function ProductGrid({ tenantId, categoryId, addToCart, language 
         >
           <CardContent className="p-0">
             <Image
-              src={p.imageUrl}
+              src={p.imageUrl || "https://picsum.photos/seed/product/300/300"}
               alt={p.name[language]}
               width={300}
               height={300}
