@@ -3,13 +3,14 @@ import * as admin from "firebase-admin";
 import { onCall } from "firebase-functions/v2/https";
 import { HttpsError } from "firebase-functions/v2/https";
 import { generateRKSVSignature } from "./pos/rksvSignature";
+import { t, Language } from "./i18n";
 
 if (!admin.apps.length) {
   admin.initializeApp();
 }
 
 export const recordTransaction = onCall({ region: "us-central1" }, async (request) => {
-  const { tenantId, transaction } = request.data;
+  const { tenantId, transaction, lang = "en" } = request.data as { tenantId: string; transaction: any; lang: Language };
 
   if (!tenantId || !transaction) {
     throw new HttpsError("invalid-argument", "tenantId and transaction are required.");
@@ -26,7 +27,7 @@ export const recordTransaction = onCall({ region: "us-central1" }, async (reques
   });
 
   // 💬 2️⃣ RKSV imzası oluşturuluyor
-  const { currentHash, signature } = await generateRKSVSignature(tenantId, transaction);
+  const { currentHash, signature } = await generateRKSVSignature(tenantId, transaction, lang);
 
   // 💬 3️⃣ İşleme RKSV verileri ekleniyor
   await transactionRef.update({
@@ -36,7 +37,7 @@ export const recordTransaction = onCall({ region: "us-central1" }, async (reques
   });
 
   console.info(
-    `✅ Transaction ${transactionRef.id} processed successfully for tenant ${tenantId}`
+    `[${lang.toUpperCase()}] ${t(lang, "TRANSACTION_PROCESSED")}: ${transactionRef.id} for tenant ${tenantId}`
   );
 
   return {

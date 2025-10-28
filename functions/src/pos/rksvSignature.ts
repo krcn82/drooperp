@@ -1,12 +1,14 @@
+
 import crypto from "crypto";
 import * as admin from "firebase-admin";
+import { t, Language } from "../i18n";
 
 /**
  * RKSV Signature Chain Manager
  * Her işlem bir önceki imzanın hash’i ile zincirlenir.
  * Bu, yasal işlem zincirini oluşturur.
  */
-export async function generateRKSVSignature(tenantId: string, transactionData: any) {
+export async function generateRKSVSignature(tenantId: string, transactionData: any, lang: Language = 'en') {
   const db = admin.firestore();
 
   const lastSignatureDoc = await db
@@ -40,6 +42,8 @@ export async function generateRKSVSignature(tenantId: string, transactionData: a
     signature,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   });
+  
+  console.info(`[${lang.toUpperCase()}] ${t(lang, "RKSV_SIGNATURE_CREATED")}`);
 
   return { currentHash, signature };
 }
