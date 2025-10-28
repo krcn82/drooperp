@@ -34,15 +34,14 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.syncIntegrationOrders = void 0;
-const functions = __importStar(require("firebase-functions"));
+const scheduler_1 = require("firebase-functions/v2/scheduler");
 const admin = __importStar(require("firebase-admin"));
 const firestore_1 = require("firebase-admin/firestore");
 /**
  * A scheduled function that runs every 5 minutes to poll for new orders
  * from integrated delivery platforms, in case a webhook was missed.
  */
-exports.syncIntegrationOrders = functions.pubsub.schedule('every 5 minutes')
-    .onRun(async (context) => {
+exports.syncIntegrationOrders = (0, scheduler_1.onSchedule)('every 5 minutes', async (event) => {
     console.log('Starting 5-minute integration order sync...');
     const firestore = admin.firestore();
     try {

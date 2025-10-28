@@ -34,21 +34,21 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.onNotificationCreate = void 0;
-const functions = __importStar(require("firebase-functions"));
+const firestore_1 = require("firebase-functions/v2/firestore");
 const admin = __importStar(require("firebase-admin"));
 /**
  * A Firestore trigger that sends an email when a critical alert notification is created.
  * It relies on the Firebase "Trigger Email" extension, which listens for new documents
  * in a specified 'mail' collection.
  */
-exports.onNotificationCreate = functions.firestore
-    .document('/tenants/{tenantId}/notifications/{notificationId}')
-    .onCreate(async (snap, context) => {
-    const notification = snap.data();
-    const { tenantId } = context.params;
+exports.onNotificationCreate = (0, firestore_1.onDocumentCreated)('/tenants/{tenantId}/notifications/{notificationId}', async (event) => {
+    if (!event.data)
+        return null;
+    const notification = event.data.data();
+    const { tenantId } = event.params;
     // 1. Check if the notification is a critical alert
     if (notification.type !== 'alert') {
-        console.log(`Notification ${context.params.notificationId} is not an alert. Skipping email.`);
+        console.log(`Notification ${event.params.notificationId} is not an alert. Skipping email.`);
         return null;
     }
     console.log(`Critical alert detected for tenant ${tenantId}. Preparing email.`);

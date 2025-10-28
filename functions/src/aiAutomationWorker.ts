@@ -4,15 +4,14 @@ import * as admin from 'firebase-admin';
 import { Timestamp } from 'firebase-admin/firestore';
 
 /**
- * A daily scheduled function that analyzes tenant data and sends insights.
- * Runs every day at 7:00 AM Pacific Time.
+ * A scheduled function that runs every 15 minutes to analyze tenant data and sends insights.
  */
 export const aiAutomationWorker = onSchedule({
-    schedule: '0 7 * * *',
-    timeZone: 'America/Los_Angeles',
+    schedule: 'every 15 minutes',
+    timeZone: 'Europe/Berlin',
 }, async (context) => {
     
-    console.log('Starting daily AI Automation Worker...');
+    console.log('Starting AI Automation Worker...');
     const firestore = admin.firestore();
     
     try {
@@ -20,7 +19,7 @@ export const aiAutomationWorker = onSchedule({
       
       if (tenantsSnapshot.empty) {
         console.log('No tenants found. Exiting worker.');
-        return null;
+        return;
       }
       
       const analysisPromises = tenantsSnapshot.docs.map(tenantDoc => 
@@ -30,11 +29,11 @@ export const aiAutomationWorker = onSchedule({
       await Promise.all(analysisPromises);
       
       console.log('Successfully completed AI Automation Worker for all tenants.');
-      return null;
+      return;
 
     } catch (error) {
       console.error('Error running AI Automation Worker:', error);
-      return null;
+      return;
     }
 });
 

@@ -34,25 +34,25 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.generateDatevExport = void 0;
-const functions = __importStar(require("firebase-functions"));
+const https_1 = require("firebase-functions/v2/https");
 const admin = __importStar(require("firebase-admin"));
 /**
  * Generates a DATEV-compatible CSV string from a tenant's transactions.
  */
-exports.generateDatevExport = functions.https.onCall(async (data, context) => {
-    const { tenantId } = data;
-    const uid = context.auth?.uid;
+exports.generateDatevExport = (0, https_1.onCall)(async (request) => {
+    const { tenantId } = request.data;
+    const uid = request.auth?.uid;
     if (!uid) {
-        throw new functions.https.HttpsError('unauthenticated', 'The function must be called while authenticated.');
+        throw new https_1.HttpsError('unauthenticated', 'The function must be called while authenticated.');
     }
     if (!tenantId) {
-        throw new functions.https.HttpsError('invalid-argument', 'Missing required data: tenantId.');
+        throw new https_1.HttpsError('invalid-argument', 'Missing required data: tenantId.');
     }
     const firestore = admin.firestore();
     // Admin Check: Verify the user has the 'admin' role for this tenant.
     const userDoc = await firestore.doc(`tenants/${tenantId}/users/${uid}`).get();
     if (!userDoc.exists || userDoc.data()?.role !== 'admin') {
-        throw new functions.https.HttpsError('permission-denied', 'You must be an admin to generate a DATEV export.');
+        throw new https_1.HttpsError('permission-denied', 'You must be an admin to generate a DATEV export.');
     }
     const transactionsSnapshot = await firestore.collection(`tenants/${tenantId}/transactions`).get();
     if (transactionsSnapshot.empty) {

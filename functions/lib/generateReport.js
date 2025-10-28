@@ -34,23 +34,23 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.generateReport = void 0;
-const functions = __importStar(require("firebase-functions"));
+const https_1 = require("firebase-functions/v2/https");
 const admin = __importStar(require("firebase-admin"));
 const date_fns_1 = require("date-fns");
-exports.generateReport = functions.https.onCall(async (data, context) => {
-    const { tenantId, range } = data;
-    const uid = context.auth?.uid;
+exports.generateReport = (0, https_1.onCall)(async (request) => {
+    const { tenantId, range } = request.data;
+    const uid = request.auth?.uid;
     if (!uid) {
-        throw new functions.https.HttpsError('unauthenticated', 'The function must be called while authenticated.');
+        throw new https_1.HttpsError('unauthenticated', 'The function must be called while authenticated.');
     }
     if (!tenantId || !range) {
-        throw new functions.https.HttpsError('invalid-argument', 'Missing required data: tenantId or range.');
+        throw new https_1.HttpsError('invalid-argument', 'Missing required data: tenantId or range.');
     }
     const firestore = admin.firestore();
     // Admin Check: Verify the user has the 'admin' role for this tenant.
     const userDoc = await firestore.doc(`tenants/${tenantId}/users/${uid}`).get();
     if (!userDoc.exists || userDoc.data()?.role !== 'admin') {
-        throw new functions.https.HttpsError('permission-denied', 'You must be an admin to generate reports.');
+        throw new https_1.HttpsError('permission-denied', 'You must be an admin to generate reports.');
     }
     // Determine date range
     const now = new Date();

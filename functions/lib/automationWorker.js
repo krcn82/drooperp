@@ -34,7 +34,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.automationWorker = void 0;
-const functions = __importStar(require("firebase-functions"));
+const scheduler_1 = require("firebase-functions/v2/scheduler");
 const admin = __importStar(require("firebase-admin"));
 const firestore_1 = require("firebase-admin/firestore");
 // Default automation rules if a tenant has not configured them
@@ -69,8 +69,7 @@ const addAuditLog = (firestore, tenantId, rule, details = {}) => {
 /**
  * Scheduled function that runs every 15 minutes to perform automated checks.
  */
-exports.automationWorker = functions.pubsub.schedule('every 15 minutes')
-    .onRun(async (context) => {
+exports.automationWorker = (0, scheduler_1.onSchedule)('every 15 minutes', async (context) => {
     console.log('Starting 15-minute automation worker...');
     const firestore = admin.firestore();
     try {

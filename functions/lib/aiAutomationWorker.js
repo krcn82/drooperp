@@ -34,16 +34,17 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.aiAutomationWorker = void 0;
-const functions = __importStar(require("firebase-functions"));
+const scheduler_1 = require("firebase-functions/v2/scheduler");
 const admin = __importStar(require("firebase-admin"));
 const firestore_1 = require("firebase-admin/firestore");
 /**
  * A daily scheduled function that analyzes tenant data and sends insights.
  * Runs every day at 7:00 AM Pacific Time.
  */
-exports.aiAutomationWorker = functions.pubsub.schedule('0 7 * * *')
-    .timeZone('America/Los_Angeles')
-    .onRun(async (context) => {
+exports.aiAutomationWorker = (0, scheduler_1.onSchedule)({
+    schedule: '0 7 * * *',
+    timeZone: 'America/Los_Angeles',
+}, async (context) => {
     console.log('Starting daily AI Automation Worker...');
     const firestore = admin.firestore();
     try {

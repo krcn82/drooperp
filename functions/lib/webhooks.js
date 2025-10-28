@@ -34,14 +34,14 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.integrationWebhook = void 0;
-const functions = __importStar(require("firebase-functions"));
+const https_1 = require("firebase-functions/v2/https");
 const admin = __importStar(require("firebase-admin"));
 const crypto = __importStar(require("crypto"));
 /**
  * Handles incoming webhooks from delivery platforms like Wolt and Foodora.
  * URL format: /integrationWebhook/wolt?tenantId=your_tenant_id
  */
-exports.integrationWebhook = functions.https.onRequest(async (req, res) => {
+exports.integrationWebhook = (0, https_1.onRequest)(async (req, res) => {
     // 1. Extract platform and tenantId from the request
     const pathParts = req.path.split('/');
     const platform = pathParts[pathParts.length - 1]; // e.g., 'wolt'

@@ -34,19 +34,19 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.syncOfflineTransactions = void 0;
-const functions = __importStar(require("firebase-functions"));
+const https_1 = require("firebase-functions/v2/https");
 const admin = __importStar(require("firebase-admin"));
 /**
  * Syncs an array of offline transactions to Firestore.
  */
-exports.syncOfflineTransactions = functions.https.onCall(async (data, context) => {
-    const { tenantId, transactionsArray } = data;
-    const uid = context.auth?.uid;
+exports.syncOfflineTransactions = (0, https_1.onCall)(async (request) => {
+    const { tenantId, transactionsArray } = request.data;
+    const uid = request.auth?.uid;
     if (!uid) {
-        throw new functions.https.HttpsError('unauthenticated', 'The function must be called while authenticated.');
+        throw new https_1.HttpsError('unauthenticated', 'The function must be called while authenticated.');
     }
     if (!tenantId || !Array.isArray(transactionsArray) || transactionsArray.length === 0) {
-        throw new functions.https.HttpsError('invalid-argument', 'Missing or invalid data: tenantId or transactionsArray.');
+        throw new https_1.HttpsError('invalid-argument', 'Missing or invalid data: tenantId or transactionsArray.');
     }
     const firestore = admin.firestore();
     const batch = firestore.batch();
@@ -66,7 +66,7 @@ exports.syncOfflineTransactions = functions.https.onCall(async (data, context) =
     }
     catch (error) {
         console.error('Error syncing offline transactions:', error);
-        throw new functions.https.HttpsError('internal', 'An error occurred while syncing transactions.', error);
+        throw new https_1.HttpsError('internal', 'An error occurred while syncing transactions.', error);
     }
 });
 //# sourceMappingURL=syncOfflineTransactions.js.map

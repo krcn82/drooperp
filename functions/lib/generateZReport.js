@@ -34,27 +34,27 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.generateZReport = void 0;
-const functions = __importStar(require("firebase-functions"));
+const https_1 = require("firebase-functions/v2/https");
 const admin = __importStar(require("firebase-admin"));
 /**
  * Generates a Z-Report for a given cash register session.
  * Calculates totals and updates the cash register document.
  */
-exports.generateZReport = functions.https.onCall(async (data, context) => {
-    const { tenantId, cashRegisterId } = data;
-    const uid = context.auth?.uid;
+exports.generateZReport = (0, https_1.onCall)(async (request) => {
+    const { tenantId, cashRegisterId } = request.data;
+    const uid = request.auth?.uid;
     if (!uid) {
-        throw new functions.https.HttpsError('unauthenticated', 'The function must be called while authenticated.');
+        throw new https_1.HttpsError('unauthenticated', 'The function must be called while authenticated.');
     }
     if (!tenantId || !cashRegisterId) {
-        throw new functions.https.HttpsError('invalid-argument', 'Missing required data: tenantId or cashRegisterId.');
+        throw new https_1.HttpsError('invalid-argument', 'Missing required data: tenantId or cashRegisterId.');
     }
     const firestore = admin.firestore();
     const registerRef = firestore.doc(`tenants/${tenantId}/cashRegisters/${cashRegisterId}`);
     try {
         const registerDoc = await registerRef.get();
         if (!registerDoc.exists) {
-            throw new functions.https.HttpsError('not-found', 'Cash register session not found.');
+            throw new https_1.HttpsError('not-found', 'Cash register session not found.');
         }
         const registerData = registerDoc.data();
         // 1. Find all payments for this cash register session
@@ -123,7 +123,10 @@ exports.generateZReport = functions.https.onCall(async (data, context) => {
     }
     catch (error) {
         console.error('Error generating Z-Report:', error);
-        throw new functions.https.HttpsError('internal', 'An unexpected error occurred.', error.message);
+        if (error instanceof https_1.HttpsError) {
+            throw error;
+        }
+        throw new https_1.HttpsError('internal', 'An unexpected error occurred.', error.message);
     }
 });
 //# sourceMappingURL=generateZReport.js.map

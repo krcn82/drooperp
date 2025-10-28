@@ -34,19 +34,20 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.onKdsOrderUpdate = exports.updateKdsOrderStatus = exports.createKdsOrder = void 0;
-const functions = __importStar(require("firebase-functions"));
+const https_1 = require("firebase-functions/v2/https");
+const firestore_1 = require("firebase-functions/v2/firestore");
 const admin = __importStar(require("firebase-admin"));
 /**
  * Creates a new order for the Kitchen Display System (KDS).
  */
-exports.createKdsOrder = functions.https.onCall(async (data, context) => {
-    const { tenantId, orderData } = data;
-    const uid = context.auth?.uid;
+exports.createKdsOrder = (0, https_1.onCall)(async (request) => {
+    const { tenantId, orderData } = request.data;
+    const uid = request.auth?.uid;
     if (!uid) {
-        throw new functions.https.HttpsError('unauthenticated', 'The function must be called while authenticated.');
+        throw new https_1.HttpsError('unauthenticated', 'The function must be called while authenticated.');
     }
     if (!tenantId || !orderData || !orderData.items || !orderData.tableId) {
-        throw new functions.https.HttpsError('invalid-argument', 'Missing required data: tenantId, items, or tableId.');
+        throw new https_1.HttpsError('invalid-argument', 'Missing required data: tenantId, items, or tableId.');
     }
     try {
         const firestore = admin.firestore();
@@ -63,24 +64,24 @@ exports.createKdsOrder = functions.https.onCall(async (data, context) => {
     }
     catch (error) {
         console.error('Error creating KDS order:', error);
-        throw new functions.https.HttpsError('internal', 'An error occurred while creating the KDS order.');
+        throw new https_1.HttpsError('internal', 'An error occurred while creating the KDS order.');
     }
 });
 /**
  * Updates the status of a KDS order.
  */
-exports.updateKdsOrderStatus = functions.https.onCall(async (data, context) => {
-    const { tenantId, orderId, status } = data;
-    const uid = context.auth?.uid;
+exports.updateKdsOrderStatus = (0, https_1.onCall)(async (request) => {
+    const { tenantId, orderId, status } = request.data;
+    const uid = request.auth?.uid;
     if (!uid) {
-        throw new functions.https.HttpsError('unauthenticated', 'The function must be called while authenticated.');
+        throw new https_1.HttpsError('unauthenticated', 'The function must be called while authenticated.');
     }
     if (!tenantId || !orderId || !status) {
-        throw new functions.https.HttpsError('invalid-argument', 'Missing required data: tenantId, orderId, or status.');
+        throw new https_1.HttpsError('invalid-argument', 'Missing required data: tenantId, orderId, or status.');
     }
     const validStatuses = ['pending', 'cooking', 'ready', 'served', 'canceled'];
     if (!validStatuses.includes(status)) {
-        throw new functions.https.HttpsError('invalid-argument', `Invalid status. Must be one of: ${validStatuses.join(', ')}`);
+        throw new https_1.HttpsError('invalid-argument', `Invalid status. Must be one of: ${validStatuses.join(', ')}`);
     }
     try {
         const firestore = admin.firestore();
@@ -93,18 +94,19 @@ exports.updateKdsOrderStatus = functions.https.onCall(async (data, context) => {
     }
     catch (error) {
         console.error('Error updating KDS order status:', error);
-        throw new functions.https.HttpsError('internal', 'An error occurred while updating the order status.');
+        throw new https_1.HttpsError('internal', 'An error occurred while updating the order status.');
     }
 });
 /**
  * Firestore trigger that sends a notification when a KDS order status changes.
  */
-exports.onKdsOrderUpdate = functions.firestore
-    .document('/tenants/{tenantId}/kdsOrders/{orderId}')
-    .onUpdate(async (change, context) => {
-    const { tenantId, orderId } = context.params;
-    const newValue = change.after.data();
-    const oldValue = change.before.data();
+exports.onKdsOrderUpdate = (0, firestore_1.onDocumentUpdated)('/tenants/{tenantId}/kdsOrders/{orderId}', async (event) => {
+    const { tenantId, orderId } = event.params;
+    if (!event.data) {
+        return null;
+    }
+    const newValue = event.data.after.data();
+    const oldValue = event.data.before.data();
     // Check if the status has actually changed
     if (newValue.status === oldValue.status) {
         return null;
