@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import * as admin from "firebase-admin";
 import { Language, t } from "../i18n";
+import { signWithRKSVProvider } from "./rksvProvider";
 
 /**
  * 🇩🇪 Erzeugt eine neue RKSV-Signatur für eine Transaktion oder einen Tagesabschluss.
@@ -25,18 +26,14 @@ export async function generateRKSVSignature(
     : lastSignatureSnap.docs[0].data().hash;
 
   // 🧾 Daten + letzte Hash-Werte kombinieren
-  const inputString = JSON.stringify(data) + lastHash;
+  const dataToSign = JSON.stringify(data) + lastHash;
   const currentHash = crypto
     .createHash("sha256")
-    .update(inputString)
+    .update(dataToSign)
     .digest("hex");
 
-  // 🔐 Beispielhafte RSA-Signatur (in Produktion: Hardware-Sicherheitsmodul!)
-  const privateKey = process.env.RKSV_PRIVATE_KEY || "test_private_key";
-  const signature = crypto
-    .createHmac("sha256", privateKey)
-    .update(currentHash)
-    .digest("hex");
+  // 🔐 Signatur über den Provider erstellen
+  const signature = await signWithRKSVProvider(tenantId, currentHash);
 
   // 💾 Speicherung in Firestore
   await db.collection(`tenants/${tenantId}/signatures`).add({

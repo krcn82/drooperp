@@ -434,6 +434,19 @@
         "finanzOnlinePassword": {
             "type": "string",
             "description": "The password for FinanzOnline API. Should be stored in Secret Manager."
+        },
+        "signatureType": {
+          "type": "string",
+          "enum": ["atrust_online", "usb"],
+          "description": "The selected RKSV signature provider."
+        },
+        "aTrustUser": {
+          "type": "string",
+          "description": "Username for A-Trust Online. Stored in Secret Manager."
+        },
+        "aTrustPassword": {
+          "type": "string",
+          "description": "Password for A-Trust Online. Stored in Secret Manager."
         }
       },
       "required": [
