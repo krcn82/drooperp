@@ -1,5 +1,4 @@
 
-import * as functions from "firebase-functions";
 import nodemailer from "nodemailer";
 
 // Use process.env for environment variables in Firebase Functions v2

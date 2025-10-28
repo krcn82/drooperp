@@ -37,6 +37,7 @@ exports.automationWorker = void 0;
 const scheduler_1 = require("firebase-functions/v2/scheduler");
 const admin = __importStar(require("firebase-admin"));
 const firestore_1 = require("firebase-admin/firestore");
+const functions_monitor_1 = require("./functions-monitor");
 // Default automation rules if a tenant has not configured them
 const defaultRules = {
     highOrderVolumeThreshold: 20,
@@ -70,22 +71,24 @@ const addAuditLog = (firestore, tenantId, rule, details = {}) => {
  * Scheduled function that runs every 15 minutes to perform automated checks.
  */
 exports.automationWorker = (0, scheduler_1.onSchedule)({ schedule: "every 15 minutes", timeZone: "Europe/Berlin" }, async (event) => {
+    const start = Date.now();
     console.log('Starting 15-minute automation worker...');
-    const firestore = admin.firestore();
     try {
+        const firestore = admin.firestore();
         const tenantsSnapshot = await firestore.collection('tenants').where('status', '==', 'active').get();
         if (tenantsSnapshot.empty) {
             console.log('No active tenants found.');
+            await (0, functions_monitor_1.logFunctionExecution)('automationWorker', 'success', 'Completed: No active tenants found.', Date.now() - start);
             return;
         }
         const workerPromises = tenantsSnapshot.docs.map(tenantDoc => runChecksForTenant(firestore, tenantDoc.id));
         await Promise.all(workerPromises);
         console.log('Successfully completed automation worker for all active tenants.');
-        return;
+        await (0, functions_monitor_1.logFunctionExecution)('automationWorker', 'success', 'Completed successfully for all active tenants.', Date.now() - start);
     }
     catch (error) {
         console.error('Error running automation worker:', error);
-        return;
+        await (0, functions_monitor_1.logFunctionExecution)('automationWorker', 'error', error.message, Date.now() - start);
     }
 });
 /**
@@ -139,6 +142,8 @@ async function runChecksForTenant(firestore, tenantId) {
     }
     catch (error) {
         console.error(`Failed to run checks for tenant ${tenantId}:`, error);
+        // Re-throw to be caught by the main worker's catch block
+        throw error;
     }
 }
 async function checkHighOrderVolume(firestore, tenantId, rules, createNotification) {

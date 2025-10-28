@@ -37,6 +37,7 @@ exports.aiAutomationWorker = void 0;
 const scheduler_1 = require("firebase-functions/v2/scheduler");
 const admin = __importStar(require("firebase-admin"));
 const firestore_1 = require("firebase-admin/firestore");
+const functions_monitor_1 = require("./functions-monitor");
 /**
  * A scheduled function that runs every 15 minutes to analyze tenant data and sends insights.
  */
@@ -44,22 +45,24 @@ exports.aiAutomationWorker = (0, scheduler_1.onSchedule)({
     schedule: 'every 15 minutes',
     timeZone: 'Europe/Berlin',
 }, async (context) => {
+    const start = Date.now();
     console.log('Starting AI Automation Worker...');
-    const firestore = admin.firestore();
     try {
+        const firestore = admin.firestore();
         const tenantsSnapshot = await firestore.collection('tenants').get();
         if (tenantsSnapshot.empty) {
             console.log('No tenants found. Exiting worker.');
+            await (0, functions_monitor_1.logFunctionExecution)('aiAutomationWorker', 'success', 'Completed: No tenants found.', Date.now() - start);
             return;
         }
         const analysisPromises = tenantsSnapshot.docs.map(tenantDoc => analyzeTenantData(firestore, tenantDoc.id));
         await Promise.all(analysisPromises);
         console.log('Successfully completed AI Automation Worker for all tenants.');
-        return;
+        await (0, functions_monitor_1.logFunctionExecution)('aiAutomationWorker', 'success', 'Completed successfully for all tenants.', Date.now() - start);
     }
     catch (error) {
         console.error('Error running AI Automation Worker:', error);
-        return;
+        await (0, functions_monitor_1.logFunctionExecution)('aiAutomationWorker', 'error', error.message, Date.now() - start);
     }
 });
 /**
@@ -100,6 +103,8 @@ async function analyzeTenantData(firestore, tenantId) {
     }
     catch (error) {
         console.error(`Failed to analyze data for tenant ${tenantId}:`, error);
+        // Re-throw the error to be caught by the main function's catch block
+        throw error;
     }
 }
 /**

@@ -36,5 +36,6 @@ export { syncMenuWithPlatform } from './syncMenu';
 export { onNotificationCreate } from './sendNotificationAlert';
 
 // Monitoring and email are helpers, not exported as functions
+export { sendDailySystemReport } from './sendDailySystemReport';
 // export { logFunctionExecution } from './functions-monitor';
 // export { sendEmailNotification } from './email-notifications';

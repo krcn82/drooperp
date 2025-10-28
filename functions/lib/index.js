@@ -32,28 +32,56 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
-var __exportStar = (this && this.__exportStar) || function(m, exports) {
-    for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
-};
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.onNotificationCreate = exports.syncMenuWithPlatform = exports.syncIntegrationOrders = exports.integrationWebhook = exports.syncOfflineTransactions = exports.recordTransaction = exports.onKdsOrderUpdate = exports.updateKdsOrderStatus = exports.createKdsOrder = exports.paymentDeviceCallback = exports.startDevicePayment = exports.stripeWebhook = exports.processStripePayment = exports.generateZReport = exports.generateReport = exports.generateDatevExport = exports.automationWorker = exports.aiAutomationWorker = void 0;
 /**
  * Initializes Firebase Admin SDK and exports all Cloud Functions.
+ * This file acts as the main entry point for deploying functions.
+ * It is structured to explicitly export each function for clarity.
  */
 const admin = __importStar(require("firebase-admin"));
+// Initialize Firebase Admin SDK
+// This is done once and the instance is shared across all functions
 admin.initializeApp();
-// Export functions from their individual files
-__exportStar(require("./recordTransaction"), exports);
-__exportStar(require("./syncOfflineTransactions"), exports);
-__exportStar(require("./generateDatevExport"), exports);
-__exportStar(require("./restaurant"), exports);
-__exportStar(require("./aiAutomationWorker"), exports);
-__exportStar(require("./generateReport"), exports);
-__exportStar(require("./webhooks"), exports);
-__exportStar(require("./syncIntegrationOrders"), exports);
-__exportStar(require("./syncMenu"), exports);
-__exportStar(require("./automationWorker"), exports);
-__exportStar(require("./sendNotificationAlert"), exports);
-__exportStar(require("./stripe"), exports);
-__exportStar(require("./paymentDevice"), exports);
-__exportStar(require("./generateZReport"), exports);
+// AI Automation Workers
+var aiAutomationWorker_1 = require("./aiAutomationWorker");
+Object.defineProperty(exports, "aiAutomationWorker", { enumerable: true, get: function () { return aiAutomationWorker_1.aiAutomationWorker; } });
+var automationWorker_1 = require("./automationWorker");
+Object.defineProperty(exports, "automationWorker", { enumerable: true, get: function () { return automationWorker_1.automationWorker; } });
+// Data Export and Reporting
+var generateDatevExport_1 = require("./generateDatevExport");
+Object.defineProperty(exports, "generateDatevExport", { enumerable: true, get: function () { return generateDatevExport_1.generateDatevExport; } });
+var generateReport_1 = require("./generateReport");
+Object.defineProperty(exports, "generateReport", { enumerable: true, get: function () { return generateReport_1.generateReport; } });
+var generateZReport_1 = require("./generateZReport");
+Object.defineProperty(exports, "generateZReport", { enumerable: true, get: function () { return generateZReport_1.generateZReport; } });
+// Payment Processing
+var stripe_1 = require("./stripe");
+Object.defineProperty(exports, "processStripePayment", { enumerable: true, get: function () { return stripe_1.processStripePayment; } });
+Object.defineProperty(exports, "stripeWebhook", { enumerable: true, get: function () { return stripe_1.stripeWebhook; } });
+var paymentDevice_1 = require("./paymentDevice");
+Object.defineProperty(exports, "startDevicePayment", { enumerable: true, get: function () { return paymentDevice_1.startDevicePayment; } });
+Object.defineProperty(exports, "paymentDeviceCallback", { enumerable: true, get: function () { return paymentDevice_1.paymentDeviceCallback; } });
+// Restaurant & POS
+var restaurant_1 = require("./restaurant");
+Object.defineProperty(exports, "createKdsOrder", { enumerable: true, get: function () { return restaurant_1.createKdsOrder; } });
+Object.defineProperty(exports, "updateKdsOrderStatus", { enumerable: true, get: function () { return restaurant_1.updateKdsOrderStatus; } });
+Object.defineProperty(exports, "onKdsOrderUpdate", { enumerable: true, get: function () { return restaurant_1.onKdsOrderUpdate; } });
+var recordTransaction_1 = require("./recordTransaction");
+Object.defineProperty(exports, "recordTransaction", { enumerable: true, get: function () { return recordTransaction_1.recordTransaction; } });
+var syncOfflineTransactions_1 = require("./syncOfflineTransactions");
+Object.defineProperty(exports, "syncOfflineTransactions", { enumerable: true, get: function () { return syncOfflineTransactions_1.syncOfflineTransactions; } });
+// Integrations & Webhooks
+var webhooks_1 = require("./webhooks");
+Object.defineProperty(exports, "integrationWebhook", { enumerable: true, get: function () { return webhooks_1.integrationWebhook; } });
+var syncIntegrationOrders_1 = require("./syncIntegrationOrders");
+Object.defineProperty(exports, "syncIntegrationOrders", { enumerable: true, get: function () { return syncIntegrationOrders_1.syncIntegrationOrders; } });
+var syncMenu_1 = require("./syncMenu");
+Object.defineProperty(exports, "syncMenuWithPlatform", { enumerable: true, get: function () { return syncMenu_1.syncMenuWithPlatform; } });
+// Notifications
+var sendNotificationAlert_1 = require("./sendNotificationAlert");
+Object.defineProperty(exports, "onNotificationCreate", { enumerable: true, get: function () { return sendNotificationAlert_1.onNotificationCreate; } });
+// Monitoring and email are helpers, not exported as functions
+// export { logFunctionExecution } from './functions-monitor';
+// export { sendEmailNotification } from './email-notifications';
 //# sourceMappingURL=index.js.map
