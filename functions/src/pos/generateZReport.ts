@@ -1,67 +1,70 @@
-
 import * as admin from "firebase-admin";
-import { onSchedule } from "firebase-functions/v2/scheduler";
+import { onSchedule, ScheduleOptions, ScheduledEvent } from "firebase-functions/v2/scheduler";
 import { generateRKSVSignature } from "./rksvSignature";
-import { t, Language } from "../i18n";
+import { t } from "../i18n";
 
-export const generateZReport = onSchedule({
-    schedule: "0 23 * * *",
-    timeZone: "Europe/Vienna",
-}, async (event) => {
-    console.info("Daily RKSV Z-Reports process started...");
-    const db = admin.firestore();
-    const tenantsSnap = await db.collection("tenants").get();
+// 🕒 Täglicher Zeitplan: Jeden Tag um 23:00 Uhr (Wiener Zeit)
+const scheduleOptions: ScheduleOptions = {
+  schedule: "0 23 * * *",
+  timeZone: "Europe/Vienna",
+};
 
-    for (const tenant of tenantsSnap.docs) {
-        const tenantId = tenant.id;
-        
-        // Fetch tenant language preference, default to 'en'
-        const settingsDoc = await db.doc(`tenants/${tenantId}/settings/general`).get();
-        const lang = (settingsDoc.data()?.lang || 'en') as Language;
-        
-        console.info(`[${lang.toUpperCase()}] ${t(lang, "DAILY_REPORT_STARTED")} Tenant: ${tenantId}`);
+/**
+ * 🇩🇪 Funktion: Generiert den täglichen RKSV-konformen Tagesabschluss (Z-Bericht)
+ * 🇬🇧 Function: Generates the daily RKSV-compliant Z-Report
+ */
+export const generateZReport = onSchedule(scheduleOptions, async (event: ScheduledEvent): Promise<void> => {
+  const db = admin.firestore();
+  console.info(t("de", "DAILY_REPORT_STARTED"));
 
-        const transactionsRef = db.collection(`tenants/${tenantId}/transactions`);
-        const zReportsRef = db.collection(`tenants/${tenantId}/zReports`);
+  const tenantsSnap = await db.collection("tenants").get();
 
-        const startOfDay = new Date();
-        startOfDay.setHours(0, 0, 0, 0);
-        const endOfDay = new Date();
-        endOfDay.setHours(23, 59, 59, 999);
+  for (const tenant of tenantsSnap.docs) {
+    const tenantId = tenant.id;
+    const transactionsRef = db.collection(`tenants/${tenantId}/transactions`);
+    const zReportsRef = db.collection(`tenants/${tenantId}/zReports`);
 
-        const transactionsSnap = await transactionsRef
-            .where("createdAt", ">=", startOfDay)
-            .where("createdAt", "<=", endOfDay)
-            .get();
+    // 📅 Zeitraum für den heutigen Tag
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date();
+    endOfDay.setHours(23, 59, 59, 999);
 
-        if (transactionsSnap.empty) {
-            console.info(`[${lang.toUpperCase()}] ${t(lang, "NO_TRANSACTIONS")} Tenant: ${tenantId}, Date: ${startOfDay.toDateString()}`);
-            continue;
-        }
+    const transactionsSnap = await transactionsRef
+      .where("createdAt", ">=", startOfDay)
+      .where("createdAt", "<=", endOfDay)
+      .get();
 
-        let totalAmount = 0;
-        transactionsSnap.forEach((doc) => {
-            totalAmount += doc.data().totalAmount || 0;
-        });
-
-        const summaryData = {
-            date: startOfDay.toISOString().split("T")[0],
-            totalTransactions: transactionsSnap.size,
-            totalAmount,
-        };
-
-        const { currentHash, signature } = await generateRKSVSignature(tenantId, summaryData, lang);
-
-        await zReportsRef.add({
-            ...summaryData,
-            rksvHash: currentHash,
-            rksvSignature: signature,
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-
-        console.info(`[${lang.toUpperCase()}] ${t(lang, "DAILY_REPORT_COMPLETED")} Tenant: ${tenantId} (${transactionsSnap.size} transactions)`);
+    if (transactionsSnap.empty) {
+      console.info(`${t("de", "NO_TRANSACTIONS")} (${tenantId})`);
+      continue;
     }
 
-    console.info("🎯 Daily RKSV Z-Reports successfully generated for all tenants.");
-    return null;
+    // 💰 Gesamtsumme berechnen
+    let totalAmount = 0;
+    transactionsSnap.forEach((doc) => {
+      totalAmount += doc.data().totalAmount || 0;
+    });
+
+    // 🔐 RKSV-Signatur und Hash erzeugen
+    const summaryData = {
+      date: startOfDay.toISOString().split("T")[0],
+      totalTransactions: transactionsSnap.size,
+      totalAmount,
+    };
+
+    const { currentHash, signature } = await generateRKSVSignature(tenantId, summaryData);
+
+    // 🧾 Tagesabschluss speichern
+    await zReportsRef.add({
+      ...summaryData,
+      rksvHash: currentHash,
+      rksvSignature: signature,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    console.info(`✅ ${t("de", "DAILY_REPORT_COMPLETED")} [${tenantId}]`);
+  }
+
+  console.info("🎯 Alle Z-Berichte erfolgreich erstellt und signiert.");
 });
