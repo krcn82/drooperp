@@ -28,3 +28,13 @@ export type Customer = {
     loyaltyPoints: number;
     vipTier: "none" | "silver" | "gold" | "platinum";
 }
+
+export type TableStatus = 'free' | 'occupied' | 'reserved';
+
+export type Table = {
+  id: string;
+  name: string;
+  seats: number;
+  status: TableStatus;
+  currentOrderId?: string;
+};

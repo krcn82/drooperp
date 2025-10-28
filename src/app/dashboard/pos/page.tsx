@@ -119,11 +119,11 @@ export default function POSPage() {
         </header>
 
         <main className="flex-1 overflow-auto p-4">
-           {mode === "restaurant" ? (
+           {mode === "restaurant" && tenantId ? (
              <div className="grid grid-cols-12 gap-6">
-                <div className="col-span-5"><TableMap /></div>
+                <div className="col-span-5"><TableMap tenantId={tenantId} /></div>
                 <div className="col-span-7">
-                  {tenantId && <ProductGrid tenantId={tenantId} categoryId={selectedCategory} addToCart={addToCart} language={language} />}
+                  <ProductGrid tenantId={tenantId} categoryId={selectedCategory} addToCart={addToCart} language={language} />
                 </div>
               </div>
             ) : (
