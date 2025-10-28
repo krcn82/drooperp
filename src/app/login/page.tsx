@@ -76,7 +76,6 @@ export default function LoginPage() {
     try {
       await initiateEmailSignIn(auth, values.email, values.password);
     } catch (error: any) {
-      console.error('Login Error:', error);
       let title = 'An unexpected error occurred.';
       let description = 'Please try again later.';
 
