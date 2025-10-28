@@ -34,3 +34,7 @@ export { syncMenuWithPlatform } from './syncMenu';
 
 // Notifications
 export { onNotificationCreate } from './sendNotificationAlert';
+
+// Monitoring and email are helpers, not exported as functions
+// export { logFunctionExecution } from './functions-monitor';
+// export { sendEmailNotification } from './email-notifications';

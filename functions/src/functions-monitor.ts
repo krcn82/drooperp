@@ -1,4 +1,6 @@
+
 import * as admin from 'firebase-admin';
+import { sendEmailNotification } from './email-notifications';
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -24,6 +26,15 @@ export const logFunctionExecution = async (
       durationMs: durationMs || null,
       timestamp: admin.firestore.FieldValue.serverTimestamp(),
     });
+
+    // If the function failed, send an email notification
+    if (status === 'error') {
+      await sendEmailNotification(
+        `🚨 Function Error: ${functionName}`,
+        `The function "${functionName}" failed with the following error:\n\n${details}`
+      );
+    }
+
   } catch (error) {
     console.error(`⚠️ Monitor log error for ${functionName}:`, error);
   }
