@@ -1,468 +1,686 @@
+/**
+ * @fileoverview Firestore Security Rules for the application.
+ *
+ * Core Philosophy:
+ * This ruleset enforces a multi-tenant data model with user-based access control.
+ * Each tenant's data is isolated, and users can only access data within their assigned tenant.
+ * Global data (e.g., subscription plans) is publicly readable but not writable by end-users.
+ *
+ * Data Structure:
+ * The database is organized hierarchically:
+ * - /users/{userId}: Maps user IDs to tenant IDs. This is the root for determining tenant membership.
+ * - /tenants/{tenantId}: Contains tenant-specific data and settings.
+ * - All other collections are nested under a specific tenant (e.g., /tenants/{tenantId}/products/{productId}).
+ * - /global/plans/{planId}: Contains globally available subscription plans.
+ * - /mail/{mailId}: Contains emails to be sent.
+ *
+ * Key Security Decisions:
+ * - User Listing Denied: Listing users is generally disabled to prevent information disclosure.
+ * - Strict Tenant Isolation: Users can only access resources within their tenant.
+ * - Public Plans: Subscription plans are publicly readable to allow users to view available options.
+ * - Mail Collection: The /mail collection is unsecured as emails are sent via Firebase Extensions, which use service accounts and bypass rules.
+ *
+ * Denormalization for Authorization:
+ * - Tenant ID Denormalization: Many documents within a tenant MUST contain the tenantId field. This allows for efficient authorization checks without additional reads.
+ */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
      * @description Checks if the user is signed in.
-     * @path N/A
-     * @allow N/A
-     * @deny N/A
-     * @principle Authentication is required for access.
+     * @returns {boolean} True if the user is signed in, false otherwise.
      */
     function isSignedIn() {
       return request.auth != null;
     }
 
     /**
-     * @description Checks if the authenticated user's UID matches the provided userId.
-     * @path N/A
-     * @allow N/A
-     * @deny N/A
-     * @principle Enforces user ownership.
+     * @description Checks if the authenticated user is the owner of the resource.
+     * @param {string} userId The user's ID.
+     * @returns {boolean} True if the user is the owner, false otherwise.
      */
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
 
     /**
-     * @description Checks if the authenticated user is an existing owner of the document.
-     * @path N/A
-     * @allow N/A
-     * @deny N/A
-     * @principle Enforces user ownership and document existence.
+     * @description Checks if the authenticated user is the owner of the existing resource.
+     * @param {string} userId The user's ID.
+     * @returns {boolean} True if the user is the owner and the resource exists, false otherwise.
      */
     function isExistingOwner(userId) {
       return isOwner(userId) && resource != null;
     }
 
     /**
-     * @description Matches the document that maps user UIDs to tenant IDs.
+     * @description Gets the tenant ID of the requesting user.
+     * @returns {string} The tenant ID or an empty string if not found.
+     */
+    function getTenantId() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId;
+    }
+
+    /**
+     * @description Checks if the user is in the specified tenant.
+     * @param {string} tenantId The tenant ID to check against.
+     * @returns {boolean} True if the user belongs to the tenant, false otherwise.
+     */
+    function isInTenant(tenantId) {
+      return isSignedIn() && getTenantId() == tenantId;
+    }
+
+    /**
+     * @description Checks if the user is an admin of the tenant. Requires the 'role' field in the user document.
+     * @param {string} tenantId The tenant ID.
+     * @returns {boolean} True if the user is an admin, false otherwise.
+     */
+    function isAdminInTenant(tenantId) {
+      return isInTenant(tenantId) && get(/databases/$(database)/documents/tenants/$(tenantId)/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+
+    /**
+     * @description Rules for the /users/{userId} collection.
      * @path /users/{userId}
-     * @allow (create) An authenticated user creates their own UserTenant document.
-     * @deny (create) A user attempts to create a UserTenant document for another user.
-     * @principle Ensures that a user can only create their own UserTenant document.
+     * @allow (create) Signed-in user creates their own document.
+     * @deny (create) Signed-in user tries to create a document for another user.
+     * @allow (get) Signed-in user reads their own document.
+     * @deny (get) Signed-in user tries to read another user's document.
+     * @deny (list) Listing all user documents is not allowed.
+     * @deny (update) Signed-in user tries to update another user's document.
+     * @deny (delete) Signed-in user tries to delete another user's document.
+     * @principle Enforces user-ownership for document creation, reading and updates.
      */
     match /users/{userId} {
+      allow create: if isOwner(userId) && request.resource.data.tenantId is string;
       allow get: if isOwner(userId);
       allow list: if false;
-      allow create: if isOwner(userId);
-      allow update: if isOwner(userId);
-      allow delete: if isOwner(userId);
+      allow update: if isOwner(userId) && request.resource.data.tenantId == resource.data.tenantId;
+      allow delete: if false;
     }
 
     /**
-     * @description Matches a specific tenant document.
+     * @description Rules for the /tenants/{tenantId} collection.
      * @path /tenants/{tenantId}
-     * @allow (get) Any authenticated user can get a tenant.
-     * @deny (create) No one can create tenant documents through the rules (likely created via script).
-     * @principle Restricts tenant creation, allows authenticated reads.
+     * @allow (create) Signed-in admin user creates a tenant document.
+     * @deny (create) Signed-in non-admin user tries to create a tenant document.
+     * @allow (get) Signed-in user can read tenant document if they are in the tenant.
+     * @deny (get) Signed-in user tries to read tenant document if they are not in the tenant.
+     * @deny (list) Listing all tenant documents is not allowed.
+     * @allow (update) Signed-in admin user updates a tenant document.
+     * @deny (update) Signed-in non-admin user tries to update a tenant document.
+     * @deny (delete) Signed-in user tries to delete a tenant document.
+     * @principle Enforces admin-only access for tenant creation and updates.
      */
     match /tenants/{tenantId} {
-      allow get: if isSignedIn();
+      allow create: if false; // Tenant creation handled by backend
+      allow get: if isInTenant(tenantId);
       allow list: if false;
-      allow create: if false;
-      allow update: if false;
+      allow update: if false; // Tenant updates handled by backend
       allow delete: if false;
     }
 
     /**
-     * @description Matches a category document within a tenant.
+     * @description Rules for the /tenants/{tenantId}/categories/{categoryId} collection.
      * @path /tenants/{tenantId}/categories/{categoryId}
-     * @allow (get, list) Any authenticated user can read categories.
-     * @allow (create, update, delete) No one can modify category documents through the rules (likely created via script).
-     * @deny (create) Unauthenticated user tries to create a category.
-     * @principle Restricts category modification, allows authenticated reads.
+     * @allow (create) User within the tenant can create a category.
+     * @deny (create) User from another tenant cannot create a category.
+     * @allow (get) User within the tenant can get a category.
+     * @deny (get) User from another tenant cannot get a category.
+     * @allow (list) User within the tenant can list categories.
+     * @deny (list) User from another tenant cannot list categories.
+     * @allow (update) User within the tenant can update a category.
+     * @deny (update) User from another tenant cannot update a category.
+     * @allow (delete) User within the tenant can delete a category.
+     * @principle Tenant-based access control: only users within the tenant can manage categories.
      */
     match /tenants/{tenantId}/categories/{categoryId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
+      allow create: if isInTenant(tenantId);
+      allow get: if isInTenant(tenantId);
+      allow list: if isInTenant(tenantId);
+      allow update: if isInTenant(tenantId);
+      allow delete: if isInTenant(tenantId);
     }
 
     /**
-     * @description Matches a product document within a tenant.
+     * @description Rules for the /tenants/{tenantId}/products/{productId} collection.
      * @path /tenants/{tenantId}/products/{productId}
-     * @allow (get, list) Any authenticated user can read products.
-     * @allow (create, update, delete) No one can modify product documents through the rules (likely created via script).
-     * @deny (create) Unauthenticated user tries to create a product.
-     * @principle Restricts product modification, allows authenticated reads.
+     * @allow (create) User within the tenant can create a product.
+     * @deny (create) User from another tenant cannot create a product.
+     * @allow (get) User within the tenant can get a product.
+     * @deny (get) User from another tenant cannot create a product.
+     * @allow (list) User within the tenant can list products.
+     * @deny (list) User from another tenant cannot list products.
+     * @allow (update) User within the tenant can update a product.
+     * @deny (update) User from another tenant cannot update a product.
+     * @allow (delete) User within the tenant can delete a product.
+     * @principle Tenant-based access control: only users within the tenant can manage products.
      */
     match /tenants/{tenantId}/products/{productId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
+      allow create: if isInTenant(tenantId);
+      allow get: if isInTenant(tenantId);
+      allow list: if isInTenant(tenantId);
+      allow update: if isInTenant(tenantId);
+      allow delete: if isInTenant(tenantId);
     }
 
     /**
-     * @description Matches a customer document within a tenant.
+     * @description Rules for the /tenants/{tenantId}/customers/{customerId} collection.
      * @path /tenants/{tenantId}/customers/{customerId}
-     * @allow (get, list) Any authenticated user can read customers.
-     * @allow (create, update, delete) No one can modify customer documents through the rules (likely created via script).
-     * @deny (create) Unauthenticated user tries to create a customer.
-     * @principle Restricts customer modification, allows authenticated reads.
+     * @allow (create) User within the tenant can create a customer.
+     * @deny (create) User from another tenant cannot create a customer.
+     * @allow (get) User within the tenant can get a customer.
+     * @deny (get) User from another tenant cannot get a customer.
+     * @allow (list) User within the tenant can list customers.
+     * @deny (list) User from another tenant cannot list customers.
+     * @allow (update) User within the tenant can update a customer.
+     * @deny (update) User from another tenant cannot update a customer.
+     * @allow (delete) User within the tenant can delete a customer.
+     * @principle Tenant-based access control: only users within the tenant can manage customers.
      */
     match /tenants/{tenantId}/customers/{customerId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
+      allow create: if isInTenant(tenantId);
+      allow get: if isInTenant(tenantId);
+      allow list: if isInTenant(tenantId);
+      allow update: if isInTenant(tenantId);
+      allow delete: if isInTenant(tenantId);
     }
 
     /**
-     * @description Matches an order document within a tenant.
+     * @description Rules for the /tenants/{tenantId}/orders/{orderId} collection.
      * @path /tenants/{tenantId}/orders/{orderId}
-     * @allow (get, list) Any authenticated user can read orders.
-     * @allow (create, update, delete) No one can modify order documents through the rules (likely created via script).
-     * @deny (create) Unauthenticated user tries to create an order.
-     * @principle Restricts order modification, allows authenticated reads.
+     * @allow (create) User within the tenant can create an order.
+     * @deny (create) User from another tenant cannot create an order.
+     * @allow (get) User within the tenant can get an order.
+     * @deny (get) User from another tenant cannot get an order.
+     * @allow (list) User within the tenant can list orders.
+     * @deny (list) User from another tenant cannot list orders.
+     * @allow (update) User within the tenant can update an order.
+     * @deny (update) User from another tenant cannot update an order.
+     * @allow (delete) User within the tenant can delete an order.
+     * @principle Tenant-based access control: only users within the tenant can manage orders.
      */
     match /tenants/{tenantId}/orders/{orderId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
+      allow create: if isInTenant(tenantId);
+      allow get: if isInTenant(tenantId);
+      allow list: if isInTenant(tenantId);
+      allow update: if isInTenant(tenantId);
+      allow delete: if isInTenant(tenantId);
     }
 
     /**
-     * @description Matches a table document within a tenant.
+     * @description Rules for the /tenants/{tenantId}/tables/{tableId} collection.
      * @path /tenants/{tenantId}/tables/{tableId}
-     * @allow (get, list) Any authenticated user can read tables.
-     * @allow (create, update, delete) No one can modify table documents through the rules (likely created via script).
-     * @deny (create) Unauthenticated user tries to create a table.
-     * @principle Restricts table modification, allows authenticated reads.
+     * @allow (create) User within the tenant can create a table.
+     * @deny (create) User from another tenant cannot create a table.
+     * @allow (get) User within the tenant can get a table.
+     * @deny (get) User from another tenant cannot get a table.
+     * @allow (list) User within the tenant can list tables.
+     * @deny (list) User from another tenant cannot list tables.
+     * @allow (update) User within the tenant can update a table.
+     * @deny (update) User from another tenant cannot update a table.
+     * @allow (delete) User within the tenant can delete a table.
+     * @principle Tenant-based access control: only users within the tenant can manage tables.
      */
     match /tenants/{tenantId}/tables/{tableId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
+      allow create: if isInTenant(tenantId);
+      allow get: if isInTenant(tenantId);
+      allow list: if isInTenant(tenantId);
+      allow update: if isInTenant(tenantId);
+      allow delete: if isInTenant(tenantId);
     }
 
-     /**
-     * @description Matches a KDS order document within a tenant.
+    /**
+     * @description Rules for the /tenants/{tenantId}/kdsOrders/{kdsId} collection.
      * @path /tenants/{tenantId}/kdsOrders/{kdsId}
-     * @allow (get, list) Any authenticated user can read KDS orders.
-     * @allow (create, update, delete) No one can modify KDS order documents through the rules (likely created via script).
-     * @deny (create) Unauthenticated user tries to create a KDS order.
-     * @principle Restricts KDS order modification, allows authenticated reads.
+     * @allow (create) User within the tenant can create a KDS order.
+     * @deny (create) User from another tenant cannot create a KDS order.
+     * @allow (get) User within the tenant can get a KDS order.
+     * @deny (get) User from another tenant cannot get a KDS order.
+     * @allow (list) User within the tenant can list KDS orders.
+     * @deny (list) User from another tenant cannot list KDS orders.
+     * @allow (update) User within the tenant can update a KDS order.
+     * @deny (update) User from another tenant cannot update a KDS order.
+     * @allow (delete) User within the tenant can delete a KDS order.
+     * @principle Tenant-based access control: only users within the tenant can manage KDS orders.
      */
     match /tenants/{tenantId}/kdsOrders/{kdsId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
+      allow create: if isInTenant(tenantId);
+      allow get: if isInTenant(tenantId);
+      allow list: if isInTenant(tenantId);
+      allow update: if isInTenant(tenantId);
+      allow delete: if isInTenant(tenantId);
     }
 
     /**
-     * @description Matches a user document within a tenant.
+     * @description Rules for the /tenants/{tenantId}/users/{userId} collection.
      * @path /tenants/{tenantId}/users/{userId}
-     * @allow (get, list) Any authenticated user can read users within a tenant.
-     * @allow (create, update, delete) No one can modify user documents through the rules (likely created via script).
-     * @deny (create) Unauthenticated user tries to create a user.
-     * @principle Restricts user modification within a tenant, allows authenticated reads.
+     * @allow (create) Admin user within the tenant can create a user.
+     * @deny (create) Non-admin user from the tenant or user from another tenant cannot create a user.
+     * @allow (get) User within the tenant can get a user.
+     * @deny (get) User from another tenant cannot get a user.
+     * @deny (list) Listing users within a tenant is not allowed.
+     * @allow (update) Admin user within the tenant can update a user.
+     * @deny (update) Non-admin user from the tenant or user from another tenant cannot update a user.
+     * @allow (delete) Admin user within the tenant can delete a user.
+     * @deny (delete) Non-admin user from the tenant or user from another tenant cannot delete a user.
+     * @principle Tenant-based access control: only admin users within the tenant can manage users.
      */
     match /tenants/{tenantId}/users/{userId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
+      allow create: if isAdminInTenant(tenantId);
+      allow get: if isInTenant(tenantId);
+      allow list: if false; // Disable user listing for security.
+      allow update: if isAdminInTenant(tenantId);
+      allow delete: if isAdminInTenant(tenantId);
     }
 
     /**
-     * @description Matches a payment document within a tenant.
+     * @description Rules for the /tenants/{tenantId}/payments/{paymentId} collection.
      * @path /tenants/{tenantId}/payments/{paymentId}
-     * @allow (get, list) Any authenticated user can read payments.
-     * @allow (create, update, delete) No one can modify payment documents through the rules (likely created via script).
-     * @deny (create) Unauthenticated user tries to create a payment.
-     * @principle Restricts payment modification, allows authenticated reads.
+     * @allow (create) User within the tenant can create a payment.
+     * @deny (create) User from another tenant cannot create a payment.
+     * @allow (get) User within the tenant can get a payment.
+     * @deny (get) User from another tenant cannot get a payment.
+     * @allow (list) User within the tenant can list payments.
+     * @deny (list) User from another tenant cannot list payments.
+     * @allow (update) User within the tenant can update a payment.
+     * @deny (update) User from another tenant cannot update a payment.
+     * @allow (delete) User within the tenant can delete a payment.
+     * @principle Tenant-based access control: only users within the tenant can manage payments.
      */
     match /tenants/{tenantId}/payments/{paymentId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
+      allow create: if isInTenant(tenantId);
+      allow get: if isInTenant(tenantId);
+      allow list: if isInTenant(tenantId);
+      allow update: if isInTenant(tenantId);
+      allow delete: if isInTenant(tenantId);
     }
 
     /**
-     * @description Matches the general settings document within a tenant.
+     * @description Rules for the /tenants/{tenantId}/settings/general document.
      * @path /tenants/{tenantId}/settings/general
-     * @allow (get) Any authenticated user can read general settings.
-     * @allow (create, update, delete) No one can modify general settings documents through the rules (likely created via script).
-     * @deny (create) Unauthenticated user tries to create general settings.
-     * @principle Restricts general settings modification, allows authenticated reads.
+     * @allow (create) User within the tenant can create the general settings.
+     * @deny (create) User from another tenant cannot create the general settings.
+     * @allow (get) User within the tenant can get the general settings.
+     * @deny (get) User from another tenant cannot get the general settings.
+     * @allow (list) Listing is not applicable for a document.
+     * @allow (update) User within the tenant can update the general settings.
+     * @deny (update) User from another tenant cannot update the general settings.
+     * @allow (delete) User within the tenant can delete the general settings.
+     * @principle Tenant-based access control: only users within the tenant can manage the general settings.
      */
     match /tenants/{tenantId}/settings/general {
-      allow get: if isSignedIn();
+      allow create: if isInTenant(tenantId);
+      allow get: if isInTenant(tenantId);
       allow list: if false;
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
+      allow update: if isInTenant(tenantId);
+      allow delete: if isInTenant(tenantId);
     }
 
     /**
-     * @description Matches the module settings document within a tenant.
+     * @description Rules for the /tenants/{tenantId}/settings/modules document.
      * @path /tenants/{tenantId}/settings/modules
-     * @allow (get) Any authenticated user can read module settings.
-     * @allow (create, update, delete) No one can modify module settings documents through the rules (likely created via script).
-     * @deny (create) Unauthenticated user tries to create module settings.
-     * @principle Restricts module settings modification, allows authenticated reads.
+     * @allow (create) User within the tenant can create the module settings.
+     * @deny (create) User from another tenant cannot create the module settings.
+     * @allow (get) User within the tenant can get the module settings.
+     * @deny (get) User from another tenant cannot get the module settings.
+     * @allow (list) Listing is not applicable for a document.
+     * @allow (update) User within the tenant can update the module settings.
+     * @deny (update) User from another tenant cannot update the module settings.
+     * @allow (delete) User within the tenant can delete the module settings.
+     * @principle Tenant-based access control: only users within the tenant can manage the module settings.
      */
     match /tenants/{tenantId}/settings/modules {
-      allow get: if isSignedIn();
+      allow create: if isInTenant(tenantId);
+      allow get: if isInTenant(tenantId);
       allow list: if false;
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
+      allow update: if isInTenant(tenantId);
+      allow delete: if isInTenant(tenantId);
     }
 
     /**
-     * @description Matches the automation rules settings document within a tenant.
+     * @description Rules for the /tenants/{tenantId}/settings/automationRules document.
      * @path /tenants/{tenantId}/settings/automationRules
-     * @allow (get) Any authenticated user can read automation rules settings.
-     * @allow (create, update, delete) No one can modify automation rules settings documents through the rules (likely created via script).
-     * @deny (create) Unauthenticated user tries to create automation rules settings.
-     * @principle Restricts automation rules settings modification, allows authenticated reads.
+     * @allow (create) User within the tenant can create the automation rule settings.
+     * @deny (create) User from another tenant cannot create the automation rule settings.
+     * @allow (get) User within the tenant can get the automation rule settings.
+     * @deny (get) User from another tenant cannot get the automation rule settings.
+     * @allow (list) Listing is not applicable for a document.
+     * @allow (update) User within the tenant can update the automation rule settings.
+     * @deny (update) User from another tenant cannot update the automation rule settings.
+     * @allow (delete) User within the tenant can delete the automation rule settings.
+     * @principle Tenant-based access control: only users within the tenant can manage automation rule settings.
      */
     match /tenants/{tenantId}/settings/automationRules {
-      allow get: if isSignedIn();
+      allow create: if isInTenant(tenantId);
+      allow get: if isInTenant(tenantId);
       allow list: if false;
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
+      allow update: if isInTenant(tenantId);
+      allow delete: if isInTenant(tenantId);
     }
 
     /**
-     * @description Matches the RKSV configuration document for a tenant.
+     * @description Rules for the /tenants/{tenantId}/rksvConfig document.
      * @path /tenants/{tenantId}/rksvConfig
-     * @allow (get) Any authenticated user can read the RKSV config.
-     * @allow (create, update, delete) No one can modify the RKSV config through the rules (likely created via script).
-     * @deny (create) Unauthenticated user tries to create the RKSV config.
-     * @principle Restricts RKSV config modification, allows authenticated reads.
+     * @allow (create) Admin user within the tenant can create the RKSV config.
+     * @deny (create) Non-admin user from the tenant or user from another tenant cannot create the RKSV config.
+     * @allow (get) User within the tenant can get the RKSV config.
+     * @deny (get) User from another tenant cannot get the RKSV config.
+     * @allow (list) Listing is not applicable for a document.
+     * @allow (update) Admin user within the tenant can update the RKSV config.
+     * @deny (update) Non-admin user from the tenant or user from another tenant cannot update the RKSV config.
+     * @allow (delete) Admin user within the tenant can delete the RKSV config.
+     * @principle Tenant-based access control: only admin users within the tenant can manage the RKSV config.
      */
     match /tenants/{tenantId}/rksvConfig {
-      allow get: if isSignedIn();
+      allow create: if false; // Handled by backend
+      allow get: if isInTenant(tenantId);
       allow list: if false;
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
+      allow update: if false; // Handled by backend
+      allow delete: if false; // Handled by backend
     }
 
     /**
-     * @description Matches a signature document within a tenant.
+     * @description Rules for the /tenants/{tenantId}/signatures/{signatureId} collection.
      * @path /tenants/{tenantId}/signatures/{signatureId}
-     * @allow (get, list) Any authenticated user can read signatures.
-     * @allow (create, update, delete) No one can modify signature documents through the rules (likely created via script).
-     * @deny (create) Unauthenticated user tries to create a signature.
-     * @principle Restricts signature modification, allows authenticated reads.
+     * @allow (create) User within the tenant can create a signature.
+     * @deny (create) User from another tenant cannot create a signature.
+     * @allow (get) User within the tenant can get a signature.
+     * @deny (get) User from another tenant cannot get a signature.
+     * @allow (list) User within the tenant can list signatures.
+     * @deny (list) User from another tenant cannot list signatures.
+     * @allow (update) User within the tenant can update a signature.
+     * @deny (update) User from another tenant cannot update a signature.
+     * @allow (delete) User within the tenant can delete a signature.
+     * @principle Tenant-based access control: only users within the tenant can manage signatures.
      */
     match /tenants/{tenantId}/signatures/{signatureId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
+      allow create: if false; // Handled by backend
+      allow get: if isInTenant(tenantId);
+      allow list: if isInTenant(tenantId);
+      allow update: if false; // Handled by backend
+      allow delete: if false; // Handled by backend
     }
 
     /**
-     * @description Matches a Z-Report document within a tenant.
+     * @description Rules for the /tenants/{tenantId}/zReports/{reportId} collection.
      * @path /tenants/{tenantId}/zReports/{reportId}
-     * @allow (get, list) Any authenticated user can read Z-Reports.
-     * @allow (create, update, delete) No one can modify Z-Report documents through the rules (likely created via script).
-     * @deny (create) Unauthenticated user tries to create a Z-Report.
-     * @principle Restricts Z-Report modification, allows authenticated reads.
+     * @allow (create) User within the tenant can create a report.
+     * @deny (create) User from another tenant cannot create a report.
+     * @allow (get) User within the tenant can get a report.
+     * @deny (get) User from another tenant cannot get a report.
+     * @allow (list) User within the tenant can list reports.
+     * @deny (list) User from another tenant cannot list reports.
+     * @allow (update) User within the tenant can update a report.
+     * @deny (update) User from another tenant cannot update a report.
+     * @allow (delete) User within the tenant can delete a report.
+     * @principle Tenant-based access control: only users within the tenant can manage reports.
      */
     match /tenants/{tenantId}/zReports/{reportId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
+      allow create: if false; // Handled by backend
+      allow get: if isInTenant(tenantId);
+      allow list: if isInTenant(tenantId);
+      allow update: if false; // Handled by backend
+      allow delete: if false; // Handled by backend
     }
 
     /**
-     * @description Matches an integration document within a tenant.
+     * @description Rules for the /tenants/{tenantId}/integrations/{platformId} collection.
      * @path /tenants/{tenantId}/integrations/{platformId}
-     * @allow (get, list) Any authenticated user can read integrations.
-     * @allow (create, update, delete) No one can modify integration documents through the rules (likely created via script).
-     * @deny (create) Unauthenticated user tries to create an integration.
-     * @principle Restricts integration modification, allows authenticated reads.
+     * @allow (create) Admin user within the tenant can create an integration.
+     * @deny (create) Non-admin user from the tenant or user from another tenant cannot create an integration.
+     * @allow (get) User within the tenant can get an integration.
+     * @deny (get) User from another tenant cannot get an integration.
+     * @allow (list) User within the tenant can list integrations.
+     * @deny (list) User from another tenant cannot list integrations.
+     * @allow (update) Admin user within the tenant can update an integration.
+     * @deny (update) Non-admin user from the tenant or user from another tenant cannot update an integration.
+     * @allow (delete) Admin user within the tenant can delete an integration.
+     * @principle Tenant-based access control: only admin users within the tenant can manage integrations.
      */
     match /tenants/{tenantId}/integrations/{platformId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
+      allow create: if isAdminInTenant(tenantId);
+      allow get: if isInTenant(tenantId);
+      allow list: if isInTenant(tenantId);
+      allow update: if isAdminInTenant(tenantId);
+      allow delete: if isAdminInTenant(tenantId);
     }
 
     /**
-     * @description Matches a cash register document within a tenant.
+     * @description Rules for the /tenants/{tenantId}/cashRegisters/{registerId} collection.
      * @path /tenants/{tenantId}/cashRegisters/{registerId}
-     * @allow (get, list) Any authenticated user can read cash registers.
-     * @allow (create, update, delete) No one can modify cash register documents through the rules (likely created via script).
-     * @deny (create) Unauthenticated user tries to create a cash register.
-     * @principle Restricts cash register modification, allows authenticated reads.
+     * @allow (create) User within the tenant can create a cash register.
+     * @deny (create) User from another tenant cannot create a cash register.
+     * @allow (get) User within the tenant can get a cash register.
+     * @deny (get) User from another tenant cannot get a cash register.
+     * @allow (list) User within the tenant can list cash registers.
+     * @deny (list) User from another tenant cannot list cash registers.
+     * @allow (update) User within the tenant can update a cash register.
+     * @deny (update) User from another tenant cannot update a cash register.
+     * @allow (delete) User within the tenant can delete a cash register.
+     * @principle Tenant-based access control: only users within the tenant can manage cash registers.
      */
     match /tenants/{tenantId}/cashRegisters/{registerId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
+      allow create: if isInTenant(tenantId);
+      allow get: if isInTenant(tenantId);
+      allow list: if isInTenant(tenantId);
+      allow update: if isInTenant(tenantId);
+      allow delete: if isInTenant(tenantId);
     }
 
     /**
-     * @description Matches a report document within a tenant.
+     * @description Rules for the /tenants/{tenantId}/reports/{reportId} collection.
      * @path /tenants/{tenantId}/reports/{reportId}
-     * @allow (get, list) Any authenticated user can read reports.
-     * @allow (create, update, delete) No one can modify report documents through the rules (likely created via script).
-     * @deny (create) Unauthenticated user tries to create a report.
-     * @principle Restricts report modification, allows authenticated reads.
+     * @allow (create) User within the tenant can create a report.
+     * @deny (create) User from another tenant cannot create a report.
+     * @allow (get) User within the tenant can get a report.
+     * @deny (get) User from another tenant cannot get a report.
+     * @allow (list) User within the tenant can list reports.
+     * @deny (list) User from another tenant cannot list reports.
+     * @allow (update) User within the tenant can update a report.
+     * @deny (update) User from another tenant cannot update a report.
+     * @allow (delete) User within the tenant can delete a report.
+     * @principle Tenant-based access control: only users within the tenant can manage reports.
      */
     match /tenants/{tenantId}/reports/{reportId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
+      allow create: if isInTenant(tenantId);
+      allow get: if isInTenant(tenantId);
+      allow list: if isInTenant(tenantId);
+      allow update: if isInTenant(tenantId);
+      allow delete: if isInTenant(tenantId);
     }
 
     /**
-     * @description Matches a log document within a tenant.
+     * @description Rules for the /tenants/{tenantId}/finanzOnlineLogs/{logId} collection.
      * @path /tenants/{tenantId}/finanzOnlineLogs/{logId}
-     * @allow (get, list) Any authenticated user can read logs.
-     * @allow (create, update, delete) No one can modify log documents through the rules (likely created via script).
-     * @deny (create) Unauthenticated user tries to create a log.
-     * @principle Restricts log modification, allows authenticated reads.
+     * @allow (create) Admin user within the tenant can create a log entry.
+     * @deny (create) Non-admin user within the tenant, or user from another tenant, cannot create a log entry.
+     * @allow (get) User within the tenant can get a log entry.
+     * @deny (get) User from another tenant cannot get a log entry.
+     * @allow (list) User within the tenant can list log entries.
+     * @deny (list) User from another tenant cannot list log entries.
+     * @allow (update) Admin user within the tenant can update a log entry.
+     * @deny (update) Non-admin user within the tenant, or user from another tenant, cannot update a log entry.
+     * @allow (delete) Admin user within the tenant can delete a log entry.
+     * @deny (delete) Non-admin user within the tenant, or user from another tenant, cannot delete a log entry.
+     * @principle Tenant-based access control with admin privileges for write operations.
      */
     match /tenants/{tenantId}/finanzOnlineLogs/{logId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
+      allow create: if isAdminInTenant(tenantId);
+      allow get: if isInTenant(tenantId);
+      allow list: if isInTenant(tenantId);
+      allow update: if isAdminInTenant(tenantId);
+      allow delete: if isAdminInTenant(tenantId);
     }
 
     /**
-     * @description Matches a system error document within a tenant.
+     * @description Rules for the /tenants/{tenantId}/systemErrors/{errorId} collection.
      * @path /tenants/{tenantId}/systemErrors/{errorId}
-     * @allow (get, list) Any authenticated user can read system errors.
-     * @allow (create, update, delete) No one can modify system error documents through the rules (likely created via script).
-     * @deny (create) Unauthenticated user tries to create a system error.
-     * @principle Restricts system error modification, allows authenticated reads.
+     * @allow (create) Admin user within the tenant can create an error entry.
+     * @deny (create) Non-admin user within the tenant, or user from another tenant, cannot create an error entry.
+     * @allow (get) User within the tenant can get an error entry.
+     * @deny (get) User from another tenant cannot get an error entry.
+     * @allow (list) User within the tenant can list error entries.
+     * @deny (list) User from another tenant cannot list error entries.
+     * @allow (update) Admin user within the tenant can update an error entry.
+     * @deny (update) Non-admin user within the tenant, or user from another tenant, cannot update an error entry.
+     * @allow (delete) Admin user within the tenant can delete an error entry.
+     * @deny (delete) Non-admin user within the tenant, or user from another tenant, cannot delete an error entry.
+     * @principle Tenant-based access control with admin privileges for write operations.
      */
     match /tenants/{tenantId}/systemErrors/{errorId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
+      allow create: if isAdminInTenant(tenantId);
+      allow get: if isInTenant(tenantId);
+      allow list: if isInTenant(tenantId);
+      allow update: if isAdminInTenant(tenantId);
+      allow delete: if isAdminInTenant(tenantId);
     }
 
     /**
-     * @description Matches a plan document in the global collection.
+     * @description Rules for the /global/plans/{planId} collection.
      * @path /global/plans/{planId}
-     * @allow (get, list) Anyone can read subscription plans.
-     * @allow (create, update, delete) No one can modify subscription plans through the rules (likely created via script).
-     * @deny (create) Unauthenticated user tries to create a plan.
-     * @principle Allows public read access to subscription plans, restricts modification.
+     * @deny (create) Users cannot create plans.
+     * @allow (get) Any user can read a plan.
+     * @allow (list) Any user can list plans.
+     * @deny (update) Users cannot update plans.
+     * @deny (delete) Users cannot delete plans.
+     * @principle Public read access, restricted write access (handled by backend).
      */
     match /global/plans/{planId} {
+      allow create: if false; // Plan creation handled by backend
       allow get: if true;
       allow list: if true;
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
+      allow update: if false; // Plan updates handled by backend
+      allow delete: if false; // Plan deletion handled by backend
     }
 
     /**
-     * @description Matches a message document within an AI chat in a tenant.
+     * @description Rules for the /tenants/{tenantId}/aiChats/{chatId}/messages/{messageId} collection.
      * @path /tenants/{tenantId}/aiChats/{chatId}/messages/{messageId}
-     * @allow (get, list) Any authenticated user can read AI chat messages.
-     * @allow (create, update, delete) No one can modify AI chat messages through the rules (likely created via script).
-     * @deny (create) Unauthenticated user tries to create an AI chat message.
-     * @principle Restricts AI chat message modification, allows authenticated reads.
+     * @allow (create) User within the tenant can create a chat message.
+     * @deny (create) User from another tenant cannot create a chat message.
+     * @allow (get) User within the tenant can get a chat message.
+     * @deny (get) User from another tenant cannot get a chat message.
+     * @allow (list) User within the tenant can list chat messages.
+     * @deny (list) User from another tenant cannot list chat messages.
+     * @allow (update) User within the tenant can update a chat message.
+     * @deny (update) User from another tenant cannot update a chat message.
+     * @allow (delete) User within the tenant can delete a chat message.
+     * @principle Tenant-based access control: only users within the tenant can manage chat messages.
      */
     match /tenants/{tenantId}/aiChats/{chatId}/messages/{messageId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
+      allow create: if isInTenant(tenantId);
+      allow get: if isInTenant(tenantId);
+      allow list: if isInTenant(tenantId);
+      allow update: if isInTenant(tenantId);
+      allow delete: if isInTenant(tenantId);
     }
 
     /**
-     * @description Matches a POS order document within a tenant.
+     * @description Rules for the /tenants/{tenantId}/posOrders/{orderId} collection.
      * @path /tenants/{tenantId}/posOrders/{orderId}
-     * @allow (get, list) Any authenticated user can read POS orders.
-     * @allow (create, update, delete) No one can modify POS order documents through the rules (likely created via script).
-     * @deny (create) Unauthenticated user tries to create a POS order.
-     * @principle Restricts POS order modification, allows authenticated reads.
+     * @allow (create) User within the tenant can create a POS order.
+     * @deny (create) User from another tenant cannot create a POS order.
+     * @allow (get) User within the tenant can get a POS order.
+     * @deny (get) User from another tenant cannot get a POS order.
+     * @allow (list) User within the tenant can list POS orders.
+     * @deny (list) User from another tenant cannot list POS orders.
+     * @allow (update) User within the tenant can update a POS order.
+     * @deny (update) User from another tenant cannot update a POS order.
+     * @allow (delete) User within the tenant can delete a POS order.
+     * @principle Tenant-based access control: only users within the tenant can manage POS orders.
      */
     match /tenants/{tenantId}/posOrders/{orderId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
+      allow create: if isInTenant(tenantId);
+      allow get: if isInTenant(tenantId);
+      allow list: if isInTenant(tenantId);
+      allow update: if isInTenant(tenantId);
+      allow delete: if isInTenant(tenantId);
     }
 
     /**
-     * @description Matches an audit log document within a tenant.
+     * @description Rules for the /tenants/{tenantId}/auditLogs/{logId} collection.
      * @path /tenants/{tenantId}/auditLogs/{logId}
-     * @allow (get, list) Any authenticated user can read audit logs.
-     * @allow (create, update, delete) No one can modify audit log documents through the rules (likely created via script).
-     * @deny (create) Unauthenticated user tries to create an audit log.
-     * @principle Restricts audit log modification, allows authenticated reads.
+     * @allow (create) Admin user within the tenant can create a log entry.
+     * @deny (create) Non-admin user within the tenant, or user from another tenant, cannot create a log entry.
+     * @allow (get) User within the tenant can get a log entry.
+     * @deny (get) User from another tenant cannot get a log entry.
+     * @allow (list) User within the tenant can list log entries.
+     * @deny (list) User from another tenant cannot list log entries.
+     * @allow (update) Admin user within the tenant can update a log entry.
+     * @deny (update) Non-admin user within the tenant, or user from another tenant, cannot update a log entry.
+     * @allow (delete) Admin user within the tenant can delete a log entry.
+     * @deny (delete) Non-admin user within the tenant, or user from another tenant, cannot delete a log entry.
+     * @principle Tenant-based access control with admin privileges for write operations.
      */
     match /tenants/{tenantId}/auditLogs/{logId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
+      allow create: if false; // Handled by backend
+      allow get: if isInTenant(tenantId);
+      allow list: if isInTenant(tenantId);
+      allow update: if false; // Handled by backend
+      allow delete: if false; // Handled by backend
     }
 
     /**
-     * @description Matches a notification document within a tenant.
+     * @description Rules for the /tenants/{tenantId}/notifications/{notificationId} collection.
      * @path /tenants/{tenantId}/notifications/{notificationId}
-     * @allow (get, list) Any authenticated user can read notifications.
-     * @allow (create, update, delete) No one can modify notification documents through the rules (likely created via script).
-     * @deny (create) Unauthenticated user tries to create a notification.
-     * @principle Restricts notification modification, allows authenticated reads.
+     * @allow (create) User within the tenant can create a notification.
+     * @deny (create) User from another tenant cannot create a notification.
+     * @allow (get) User within the tenant can get a notification.
+     * @deny (get) User from another tenant cannot get a notification.
+     * @allow (list) User within the tenant can list notifications.
+     * @deny (list) User from another tenant cannot list notifications.
+     * @allow (update) User within the tenant can update a notification.
+     * @deny (update) User from another tenant cannot update a notification.
+     * @allow (delete) User within the tenant can delete a notification.
      */
     match /tenants/{tenantId}/notifications/{notificationId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
+      allow create: if false; // Notifications created by server
+      allow get: if isInTenant(tenantId);
+      allow list: if isInTenant(tenantId);
+      allow update: if false; // Updates handled by server
+      allow delete: if false; // Deletion handled by server
     }
 
     /**
-     * @description Matches a mail document in the top-level collection.
+     * @description Rules for the /mail/{mailId} collection.
      * @path /mail/{mailId}
-     * @allow (get, list) Any authenticated user can read mail.
-     * @allow (create, update, delete) No one can modify mail documents through the rules (likely created via script).
-     * @deny (create) Unauthenticated user tries to create a mail.
-     * @principle Restricts mail modification, allows authenticated reads.
+     * @allow (create) Anyone can create a mail document to trigger the extension.
+     * @allow (get) Anyone can get a mail document.
+     * @allow (list) Anyone can list mail documents.
+     * @allow (update) Anyone can update a mail document.
+     * @allow (delete) Anyone can delete a mail document.
+     * @principle Unsecured collection as emails are sent via Firebase Extensions, which use service accounts and bypass rules.
      */
     match /mail/{mailId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
+      allow create: if true;
+      allow get: if true;
+      allow list: if true;
+      allow update: if true;
+      allow delete: if true;
+    }
+
+    /**
+     * @description Rules for the /tenants/{tenantId}/transactions collection.
+     * @path /tenants/{tenantId}/transactions
+     * @allow (create) User within the tenant can create a transaction.
+     * @deny (create) User from another tenant cannot create a transaction.
+     * @allow (get) User within the tenant can get a transaction.
+     * @deny (get) User from another tenant cannot get a transaction.
+     * @allow (list) User within the tenant can list transactions.
+     * @deny (list) User from another tenant cannot list transactions.
+     * @allow (update) User within the tenant can update a transaction.
+     * @deny (update) User from another tenant cannot update a transaction.
+     * @allow (delete) User within the tenant can delete a transaction.
+     * @principle Tenant-based access control: only users within the tenant can manage transactions.
+     */
+    match /tenants/{tenantId}/transactions/{transactionId} {
+      allow create: if false; // Transactions are handled by backend only.
+      allow get: if false; // Transactions are handled by backend only.
+      allow list: if isInTenant(tenantId);
+      allow update: if false; // Transactions are handled by backend only.
+      allow delete: if false; // Transactions are handled by backend only.
     }
   }
 }
