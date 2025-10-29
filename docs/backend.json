@@ -121,6 +121,10 @@
       "type": "object",
       "description": "Represents a product or service.",
       "properties": {
+        "tenantId": {
+          "type": "string",
+          "description": "The ID of the tenant this product belongs to."
+        },
         "name": {
             "type": "object",
             "properties": {
@@ -141,6 +145,7 @@
         }
       },
       "required": [
+        "tenantId",
         "name",
         "price"
       ]
@@ -885,11 +890,11 @@
         "schema": { "$ref": "#/entities/Category" },
         "description": "Sub-collection for product categories within a tenant."
     },
-    "/tenants/{tenantId}/products/{productId}": {
+    "/products/{productId}": {
       "schema": {
         "$ref": "#/entities/Product"
       },
-      "description": "Sub-collection for products within a tenant."
+      "description": "Global collection for all products, partitioned by tenantId."
     },
     "/tenants/{tenantId}/customers/{customerId}": {
         "schema": { "$ref": "#/entities/Customer" },

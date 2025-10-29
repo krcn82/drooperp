@@ -232,7 +232,8 @@ async function getProductSales(firestore: admin.firestore.Firestore, tenantId: s
 }
 
 async function checkLowStock(firestore: admin.firestore.Firestore, tenantId: string, rules: AutomationRules, createNotification: Function) {
-    const productsSnapshot = await firestore.collection(`tenants/${tenantId}/products`)
+    const productsSnapshot = await firestore.collection(`products`)
+        .where('tenantId', '==', tenantId)
         .where('quantity', '<', rules.lowStockThreshold)
         .get();
 

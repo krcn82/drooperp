@@ -21,6 +21,7 @@ interface ProductGridProps {
 const defaultProducts: Product[] = [
     {
       id: 'pizza-margherita',
+      tenantId: 'default',
       name: { de: 'Pizza Margherita', en: 'Margherita Pizza' },
       price: 9.90,
       unit: 'Stück',
@@ -32,6 +33,7 @@ const defaultProducts: Product[] = [
     },
     {
       id: 'pasta-carbonara',
+      tenantId: 'default',
       name: { de: 'Pasta Carbonara', en: 'Pasta Carbonara' },
       price: 11.50,
       unit: 'Stück',
@@ -43,6 +45,7 @@ const defaultProducts: Product[] = [
     },
     {
       id: 'cola-033',
+      tenantId: 'default',
       name: { de: 'Cola 0.33L', en: 'Coke 0.33L' },
       price: 2.90,
       unit: 'Stück',
@@ -60,14 +63,18 @@ export default function ProductGrid({ tenantId, categoryId, addToCart, language 
   const productsQuery = useMemoFirebase(() => {
     if (!firestore || !tenantId) return null;
     
-    let q: Query = collection(firestore, `tenants/${tenantId}/products`);
+    // Query the root 'products' collection and filter by the current tenantId
+    let q: Query = query(
+        collection(firestore, `products`),
+        where('tenantId', '==', tenantId)
+    );
     
-    return q; // We query all and filter on the client for the default data case
+    return q;
   }, [firestore, tenantId]);
 
   const { data: productsFromDb, isLoading } = useCollection<Product>(productsQuery);
 
-  const products = !isLoading && productsFromDb && productsFromDb.length > 0 ? productsFromDb : defaultProducts;
+  const products = !isLoading && productsFromDb && productsFromDb.length > 0 ? productsFromDb : defaultProducts.filter(p => p.tenantId === 'default' || p.tenantId === tenantId);
 
   const filteredProducts = categoryId 
     ? products.filter(p => p.categoryId === categoryId)
