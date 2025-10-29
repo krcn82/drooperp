@@ -1,0 +1,38 @@
+name: Deploy to Firebase App Hosting
+
+on:
+  push:
+    branches:
+      - main # Or your default branch
+
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build application
+        run: npm run build
+      
+      - name: Install function dependencies
+        run: cd functions && npm install && cd ..
+      
+      - name: Build functions
+        run: cd functions && npm run build && cd ..
+
+      - name: Deploy to Firebase
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: '${{ secrets.GITHUB_TOKEN }}'
+          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}'
+          projectId: 'studio-537578177-70262'
+          channelId: live
