@@ -1,44 +1,40 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { useFirestore, useUser, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, where, doc, getDoc } from 'firebase/firestore';
+import { useFirestore, useUser, useCollection, useMemoFirebase, useFirebaseApp } from '@/firebase';
+import { collection, query, where, doc, getDoc, Timestamp } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { CookingPot, Check, Utensils, AlertCircle } from 'lucide-react';
+import { CookingPot, Check, Utensils, AlertCircle, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { FirebaseApp } from 'firebase/app';
-import { useFirebaseApp } from '@/firebase';
+import { formatDistanceToNow } from 'date-fns';
+
 
 type KdsOrder = {
   id: string;
   tableId: string;
-  items: { name: string; qty: number }[];
-  createdAt: { seconds: number; nanoseconds: number };
+  items: { name: { de: string; en: string; }; qty: number }[];
+  createdAt: Timestamp;
   status: 'pending' | 'cooking' | 'ready' | 'served';
 };
 
-function TimeSince({ timestamp }: { timestamp: { seconds: number; nanoseconds: number } }) {
-  const [minutes, setMinutes] = useState(0);
+function TimeSince({ timestamp }: { timestamp: Timestamp }) {
+  const [timeAgo, setTimeAgo] = useState('');
 
   useEffect(() => {
-    const updateMinutes = () => {
-      if (timestamp) {
-        const now = new Date();
-        const orderTime = new Date(timestamp.seconds * 1000);
-        const diff = Math.floor((now.getTime() - orderTime.getTime()) / 60000);
-        setMinutes(diff);
-      }
+    const update = () => {
+        if (timestamp) {
+            setTimeAgo(formatDistanceToNow(timestamp.toDate(), { addSuffix: true }));
+        }
     };
-
-    updateMinutes();
-    const interval = setInterval(updateMinutes, 60000); // Update every minute
+    update();
+    const interval = setInterval(update, 60000); // Update every minute
     return () => clearInterval(interval);
   }, [timestamp]);
 
-  return <span className="font-mono">{minutes} min ago</span>;
+  return <span className="font-mono">{timeAgo}</span>;
 }
 
 export default function KdsPage() {
@@ -47,9 +43,9 @@ export default function KdsPage() {
   const firebaseApp = useFirebaseApp();
   const [tenantId, setTenantId] = useState<string | null>(null);
   const [tenantName, setTenantName] = useState<string>('Kitchen Display');
+  const [isSubmitting, setIsSubmitting] = useState<string | null>(null);
   const { toast } = useToast();
   
-  // Memoize functions instance
   const functions = useMemo(() => {
     if (!firebaseApp) return null;
     return getFunctions(firebaseApp);
@@ -88,6 +84,7 @@ export default function KdsPage() {
         return;
     }
     
+    setIsSubmitting(orderId);
     try {
         const updateKdsOrderStatus = httpsCallable(functions, 'updateKdsOrderStatus');
         await updateKdsOrderStatus({ tenantId, orderId, status });
@@ -103,6 +100,8 @@ export default function KdsPage() {
             title: 'Update Failed',
             description: e.message || 'Could not update order status.',
         });
+    } finally {
+        setIsSubmitting(null);
     }
   };
 
@@ -118,6 +117,11 @@ export default function KdsPage() {
         return 'border-gray-200 bg-gray-50';
     }
   };
+  
+  const sortedOrders = useMemo(() => {
+    if (!orders) return [];
+    return [...orders].sort((a,b) => a.createdAt.seconds - b.createdAt.seconds);
+  }, [orders]);
 
   return (
     <div className="flex flex-col h-screen bg-muted/20">
@@ -141,7 +145,7 @@ export default function KdsPage() {
         </div>
       )}
 
-      {!isLoading && !error && orders && orders.length === 0 && (
+      {!isLoading && !error && sortedOrders && sortedOrders.length === 0 && (
          <div className="flex-1 flex items-center justify-center">
             <div className="text-center text-muted-foreground">
               <Check className="mx-auto h-12 w-12" />
@@ -153,7 +157,7 @@ export default function KdsPage() {
 
       <main className="flex-1 p-4 lg:p-6 overflow-y-auto">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-          {orders && orders.sort((a, b) => a.createdAt.seconds - b.createdAt.seconds).map(order => (
+          {sortedOrders.map(order => (
             <Card key={order.id} className={cn('flex flex-col border-2 transition-all', getStatusColor(order.status))}>
               <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-xl font-bold">Table {order.tableId}</CardTitle>
@@ -165,31 +169,35 @@ export default function KdsPage() {
                 <ul className="divide-y">
                   {order.items.map((item, index) => (
                     <li key={index} className="py-1 flex justify-between">
-                      <span className="font-medium">{item.name}</span>
+                      <span className="font-medium">{item.name.de}</span>
                       <span className="font-bold text-primary">x {item.qty}</span>
                     </li>
                   ))}
                 </ul>
               </CardContent>
               <CardFooter className="flex flex-col gap-2 pt-4">
-                {order.status === 'pending' && (
-                  <Button onClick={() => updateStatus(order.id, 'cooking')} className="w-full" variant="secondary">
-                    <CookingPot className="mr-2"/>
-                    Start Cooking
-                  </Button>
-                )}
-                {order.status === 'cooking' && (
-                  <Button onClick={() => updateStatus(order.id, 'ready')} className="w-full" style={{backgroundColor: "hsl(var(--accent))", color: "hsl(var(--accent-foreground))"}}>
-                    <Check className="mr-2" />
-                    Mark as Ready
-                  </Button>
-                )}
-                {order.status === 'ready' && (
-                  <Button onClick={() => updateStatus(order.id, 'served')} className="w-full">
-                    <Utensils className="mr-2"/>
-                    Mark as Served
-                  </Button>
-                )}
+                 {isSubmitting === order.id ? <Button className="w-full" disabled><Loader2 className="animate-spin" /></Button> : (
+                    <>
+                        {order.status === 'pending' && (
+                        <Button onClick={() => updateStatus(order.id, 'cooking')} className="w-full" variant="secondary">
+                            <CookingPot className="mr-2"/>
+                            Start Cooking
+                        </Button>
+                        )}
+                        {order.status === 'cooking' && (
+                        <Button onClick={() => updateStatus(order.id, 'ready')} className="w-full bg-accent hover:bg-accent/90 text-accent-foreground">
+                            <Check className="mr-2" />
+                            Mark as Ready
+                        </Button>
+                        )}
+                        {order.status === 'ready' && (
+                        <Button onClick={() => updateStatus(order.id, 'served')} className="w-full">
+                            <Utensils className="mr-2"/>
+                            Mark as Served
+                        </Button>
+                        )}
+                    </>
+                 )}
               </CardFooter>
             </Card>
           ))}
