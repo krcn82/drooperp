@@ -1,7 +1,6 @@
 
 export type Product = {
   id: string;
-  tenantId: string;
   name: { de: string; en: string };
   price: number;
   unit: 'Stück' | 'Einheit';
