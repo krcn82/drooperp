@@ -49,7 +49,6 @@ export async function generateRKSVSignature(
     createdAt: admin.firestore.Timestamp.now(),
     cashRegisterId,
     certSerialNumber: certSerialNumber || "UNKNOWN",
-    signedData: dataToSign, // Store the actual signed data for audit purposes
     hash,
     signature,
     previousSignature,
