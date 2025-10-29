@@ -1,7 +1,7 @@
 'use server';
 
 import { z } from 'zod';
-import { initializeFirebase, setDocumentNonBlocking, addDocumentNonBlocking } from '@/firebase';
+import { initializeFirebase, setDocumentNonBlocking } from '@/firebase';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { doc, serverTimestamp } from 'firebase/firestore';
 import { FirebaseError } from 'firebase/app';
@@ -87,7 +87,7 @@ export async function registerTenant(prevState: State, formData: FormData): Prom
   setDocumentNonBlocking(userRef, userData, {});
     
   // 4. Create the mapping in the top-level users collection for security rules.
-  // This is the crucial step for the `isTenantMember` rule to work.
+  // This is the crucial step for the security rules to work correctly.
   const userTenantMappingRef = doc(firestore, 'users', user.uid);
   const userTenantData = { tenantId: tenantId };
   setDocumentNonBlocking(userTenantMappingRef, userTenantData, {});
