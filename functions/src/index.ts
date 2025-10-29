@@ -37,6 +37,9 @@ export { syncMenuWithPlatform } from './syncMenu';
 // Notifications
 export { onNotificationCreate } from './sendNotificationAlert';
 
+// Loyalty
+export { updateLoyaltyPoints } from './loyalty';
+
 // Monitoring and email are helpers, not exported as functions
 export { sendDailySystemReport } from './sendDailySystemReport';
 // export { logFunctionExecution } from './functions-monitor';
