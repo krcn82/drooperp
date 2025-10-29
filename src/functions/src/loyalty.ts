@@ -1,4 +1,3 @@
-'use client';
 
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import * as admin from 'firebase-admin';
@@ -29,23 +28,25 @@ export const updateLoyaltyPoints = onCall(async (request) => {
 
         const pointsEarned = Math.floor(totalAmount / 10);
         
-        if (pointsEarned > 0) {
-            const visitData = {
-                orderId,
-                total: totalAmount,
-                pointsEarned,
-                date: admin.firestore.FieldValue.serverTimestamp(),
-            };
+        const visitData = {
+            orderId,
+            total: totalAmount,
+            pointsEarned,
+            date: admin.firestore.FieldValue.serverTimestamp(),
+        };
 
-            await customerRef.update({
-                loyaltyPoints: admin.firestore.FieldValue.increment(pointsEarned),
-                lastVisit: admin.firestore.FieldValue.serverTimestamp(),
-                visits: admin.firestore.FieldValue.arrayUnion(visitData),
-            });
-             return { success: true, pointsEarned: pointsEarned };
+        const updateData: { [key: string]: any } = {
+            lastVisit: admin.firestore.FieldValue.serverTimestamp(),
+            visits: admin.firestore.FieldValue.arrayUnion(visitData),
+        };
+
+        if (pointsEarned > 0) {
+            updateData.loyaltyPoints = admin.firestore.FieldValue.increment(pointsEarned);
         }
+
+        await customerRef.update(updateData);
         
-        return { success: true, pointsEarned: 0, message: 'No points earned for this transaction.' };
+        return { success: true, pointsEarned: pointsEarned };
 
     } catch (error: any) {
         console.error('Error updating loyalty points:', error);

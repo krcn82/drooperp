@@ -1,3 +1,4 @@
+
 'use client';
 import PosClient from '../../components/PosClient';
 import CartPanel from "../../components/CartPanel";
@@ -107,7 +108,7 @@ export default function RestaurantPOSPage() {
               language={language}
               removeFromCart={removeFromCart}
               clearCart={clearCart}
-              onPay={onPay}
+              onPay={() => onPay(selectedCustomer)}
               setCart={setCart}
               setTransactionId={setTransactionId}
               mode="restaurant"

@@ -1,6 +1,7 @@
+
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -10,12 +11,21 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { Loader2, Landmark, CreditCard, Wallet, MonitorSmartphone } from 'lucide-react';
+import { Loader2, Landmark, CreditCard, Wallet, MonitorSmartphone, User, Search, Gift } from 'lucide-react';
 import { processPayment } from '@/app/dashboard/pos/actions';
 import { useToast } from '@/hooks/use-toast';
 import { useCashDrawer } from '@/hooks/use-cash-drawer';
+import { useFirebaseApp } from '@/firebase';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 type PaymentMethod = 'cash' | 'card' | 'bankomat' | 'stripe';
+
+interface CustomerData {
+    fullName: string;
+    loyaltyPoints: number;
+}
 
 interface PaymentDialogProps {
   open: boolean;
@@ -24,6 +34,7 @@ interface PaymentDialogProps {
   tenantId: string;
   transactionId: string;
   onPaymentSuccess: (qrCode: string) => void;
+  selectedCustomer: { id: string; fullName: string } | null;
 }
 
 const paymentMethods: { id: PaymentMethod; name: string; icon: React.ElementType, emoji: string }[] = [
@@ -40,50 +51,94 @@ export default function PaymentDialog({
   tenantId,
   transactionId,
   onPaymentSuccess,
+  selectedCustomer,
 }: PaymentDialogProps) {
   const [view, setView] = useState<'select' | 'terminal' | 'stripe'>('select');
   const [isLoading, setIsLoading] = useState(false);
+  const [isCheckingCustomer, setIsCheckingCustomer] = useState(false);
   const { toast } = useToast();
   const { id: cashRegisterId } = useCashDrawer();
+  const firebaseApp = useFirebaseApp();
 
-  const handleMethodSelect = async (method: PaymentMethod) => {
+  const [customerData, setCustomerData] = useState<CustomerData | null>(null);
+  const [discountedTotal, setDiscountedTotal] = useState(total);
+
+  useEffect(() => {
+    // Reset total when dialog opens or total changes
+    setDiscountedTotal(total);
+    setCustomerData(null);
+    if (selectedCustomer?.id) {
+        fetchLoyalty(selectedCustomer.id);
+    }
+  }, [open, total, selectedCustomer]);
+
+  const fetchLoyalty = async (customerId: string) => {
+    if (!firebaseApp) return;
+    setIsCheckingCustomer(true);
+    const functions = getFunctions(firebaseApp);
+    const getLoyalty = httpsCallable< { tenantId: string; customerId: string }, CustomerData>(functions, 'getCustomerLoyalty');
+    try {
+      const res = await getLoyalty({ tenantId, customerId });
+      setCustomerData(res.data);
+      toast({
+          title: "Customer Found",
+          description: `Welcome back, ${res.data.fullName}!`,
+      });
+
+      if (res.data.loyaltyPoints >= 100) {
+        const discount = total * 0.05;
+        setDiscountedTotal(total - discount);
+        toast({
+          className: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 border-green-300',
+          title: "🎉 5% Bonus Applied!",
+          description: `Discount of €${discount.toFixed(2)} applied for being a loyal customer.`
+        });
+      }
+    } catch (err: any) {
+      toast({
+          variant: 'destructive',
+          title: "Customer Not Found",
+          description: "Could not retrieve loyalty information for this customer.",
+      });
+    } finally {
+        setIsCheckingCustomer(false);
+    }
+  };
+
+  const completePayment = async (method: PaymentMethod) => {
     setIsLoading(true);
-    const paymentData = { method, amount: total, cashRegisterId };
-    const result = await processPayment(tenantId, transactionId, paymentData);
-    setIsLoading(false);
+    const finalAmount = discountedTotal;
+    const paymentData = { method, amount: finalAmount, cashRegisterId };
+    
+    // First, process the payment via the existing server action
+    const paymentResult = await processPayment(tenantId, transactionId, paymentData);
 
-    if (!result.success) {
-      toast({ variant: 'destructive', title: 'Payment Error', description: result.message });
+    if (!paymentResult.success) {
+      toast({ variant: 'destructive', title: 'Payment Error', description: paymentResult.message });
+      setIsLoading(false);
       return;
     }
-
-    switch (method) {
-      case 'cash':
-        toast({ title: 'Payment Successful', description: 'Cash payment recorded.' });
-        onPaymentSuccess(result.qrCode || 'cash-qr-placeholder');
-        resetState();
-        break;
-      case 'card':
-      case 'bankomat':
-        setView('terminal');
-        toast({ title: 'Device Notified', description: 'Please complete payment on the terminal.' });
-        // For demonstration, we'll simulate a delay then success.
-        // A real implementation would listen for a webhook or Firestore update.
-        setTimeout(() => {
-           onPaymentSuccess('terminal-payment-placeholder-qr');
-           resetState();
-        }, 8000);
-        break;
-      case 'stripe':
-        setView('stripe');
-        toast({ title: 'Stripe Initialized', description: 'Complete payment in the Stripe UI.' });
-        // In a real app, you would use result.clientSecret with Stripe.js here.
-        setTimeout(() => {
-          onPaymentSuccess('stripe-payment-successful-qr-placeholder');
-          resetState();
-        }, 5000);
-        break;
+    
+    // If payment is successful, update loyalty points
+    if (selectedCustomer?.id && firebaseApp) {
+        const functions = getFunctions(firebaseApp);
+        const updateLoyalty = httpsCallable(functions, "updateLoyaltyPoints");
+        try {
+            const loyaltyResult: any = await updateLoyalty({
+                tenantId,
+                customerId: selectedCustomer.id,
+                orderId: transactionId,
+                totalAmount: finalAmount,
+            });
+            toast({ title: 'Loyalty Updated', description: `Added ${loyaltyResult.data.pointsEarned} points.` });
+        } catch (err: any) {
+            toast({ variant: 'destructive', title: 'Loyalty Update Failed', description: err.message });
+        }
     }
+    
+    setIsLoading(false);
+    onPaymentSuccess(paymentResult.qrCode || 'payment-success-qr');
+    resetState();
   };
 
   const resetState = () => {
@@ -98,58 +153,55 @@ export default function PaymentDialog({
       onOpenChange(false);
     }
   };
-
-  const renderContent = () => {
-    switch (view) {
-      case 'terminal':
-        return (
-            <div className="text-center py-12">
-                <Loader2 className="h-16 w-16 mx-auto animate-spin text-primary" />
-                <p className="mt-4 text-lg font-semibold">Waiting for terminal response...</p>
-                <p className="text-muted-foreground">Please complete the transaction on the device.</p>
-                <Button variant="ghost" className="mt-4" onClick={() => { setView('select'); setIsLoading(false); }}>Cancel</Button>
-            </div>
-        );
-      case 'stripe':
-        return (
-            <div className="text-center py-12">
-                 <Loader2 className="h-16 w-16 mx-auto animate-spin text-primary" />
-                <p className="mt-4 text-lg font-semibold">Connecting to Stripe...</p>
-                <p className="text-muted-foreground">Please wait while we initialize the payment.</p>
-                <DialogFooter className="mt-6">
-                    <Button variant="ghost" onClick={() => { setView('select'); setIsLoading(false); }} disabled={isLoading}>Back</Button>
-                </DialogFooter>
-            </div>
-        );
-      case 'select':
-      default:
-        return (
-          <div className="grid grid-cols-2 gap-4">
-            {paymentMethods.map(method => (
-              <Button
-                key={method.id}
-                variant="outline"
-                className="h-28 flex flex-col gap-2 text-lg"
-                onClick={() => handleMethodSelect(method.id)}
-                disabled={isLoading}
-              >
-                {isLoading ? <Loader2 className="animate-spin" /> : <span className="text-4xl">{method.emoji}</span>}
-                {method.name}
-              </Button>
-            ))}
-          </div>
-        );
-    }
-  };
+  
+  const currentTotal = customerData && discountedTotal !== total ? discountedTotal : total;
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Select Payment Method</DialogTitle>
-          <DialogDescription>Total Amount: €{total.toFixed(2)}</DialogDescription>
+          <DialogTitle className="flex items-center gap-2">🧾 Payment & Loyalty</DialogTitle>
+          <DialogDescription>Total Amount: €{currentTotal.toFixed(2)}</DialogDescription>
         </DialogHeader>
-        <div className="py-4">{renderContent()}</div>
+
+        {customerData && (
+             <div className="text-center text-card-foreground p-4 bg-muted rounded-lg">
+              <p className="font-semibold text-lg">{customerData.fullName}</p>
+              <p className="text-sm text-muted-foreground">
+                Current Points: {customerData.loyaltyPoints}
+              </p>
+              {customerData.loyaltyPoints >= 100 && (
+                <p className="text-green-600 font-medium mt-1 flex items-center justify-center gap-1">
+                  <Gift size={16} /> 5% Bonus Activated
+                </p>
+              )}
+            </div>
+        )}
+        
+        {view === 'select' ? (
+             <div className="grid grid-cols-2 gap-4 py-4">
+                {paymentMethods.map(method => (
+                  <Button
+                    key={method.id}
+                    variant="outline"
+                    className="h-28 flex flex-col gap-2 text-lg"
+                    onClick={() => completePayment(method.id)}
+                    disabled={isLoading}
+                  >
+                    {isLoading ? <Loader2 className="animate-spin" /> : <span className="text-4xl">{method.emoji}</span>}
+                    {method.name}
+                  </Button>
+                ))}
+              </div>
+        ) : (
+             <div className="text-center py-12">
+                <Loader2 className="h-16 w-16 mx-auto animate-spin text-primary" />
+                <p className="mt-4 text-lg font-semibold">Waiting for terminal response...</p>
+                <p className="text-muted-foreground">Please complete the transaction on the device.</p>
+                <Button variant="ghost" className="mt-4" onClick={() => { setView('select'); setIsLoading(false); }}>Cancel</Button>
+            </div>
+        )}
+
       </DialogContent>
     </Dialog>
   );

@@ -1,4 +1,5 @@
 
+
 import PosClient from '../../components/PosClient';
 import CartPanel from "../../components/CartPanel";
 import ProductGrid from "../../components/ProductGrid";
@@ -44,7 +45,7 @@ export default function RetailPOSPage() {
               language={language}
               removeFromCart={removeFromCart}
               clearCart={clearCart}
-              onPay={onPay}
+              onPay={() => onPay(selectedCustomer)}
               setCart={setCart}
               setTransactionId={setTransactionId}
               mode="retail"

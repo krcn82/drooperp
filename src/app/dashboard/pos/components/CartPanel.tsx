@@ -20,7 +20,7 @@ interface CartPanelProps {
   language: 'de' | 'en';
   removeFromCart: (cartId: string) => void;
   clearCart: () => void;
-  onPay: () => void;
+  onPay: (customer: Customer | null) => void;
   setCart: React.Dispatch<React.SetStateAction<CartItem[]>>;
   setTransactionId: (id: string) => void;
   mode: 'retail' | 'restaurant';
@@ -106,7 +106,7 @@ export default function CartPanel({
 
     if (result.success && result.transactionId) {
       setTransactionId(result.transactionId);
-      onPay();
+      onPay(selectedCustomer);
     } else {
       toast({
         variant: 'destructive',

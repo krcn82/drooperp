@@ -22,7 +22,7 @@ interface PosClientProps {
         removeFromCart: (cartId: string) => void;
         clearCart: () => void;
         setTransactionId: (id: string) => void;
-        onPay: () => void;
+        onPay: (customer: Customer | null) => void;
         selectedCustomer: Customer | null;
         setSelectedCustomer: (customer: Customer | null) => void;
     }) => ReactNode;
@@ -126,6 +126,7 @@ export default function PosClient({ children, posMode }: PosClientProps) {
                     tenantId={tenantId}
                     transactionId={activeTransactionId}
                     onPaymentSuccess={handlePaymentSuccess}
+                    selectedCustomer={selectedCustomer}
                 />
             )}
         </>
