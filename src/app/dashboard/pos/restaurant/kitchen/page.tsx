@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
@@ -10,11 +9,13 @@ import { useToast } from '@/hooks/use-toast';
 import { CookingPot, Check, Utensils, AlertCircle, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
+import { Skeleton } from '@/components/ui/skeleton';
 
 
 type KdsOrder = {
   id: string;
   tableId: string;
+  tenantId: string;
   items: { name: { de: string; en: string; }; qty: number }[];
   createdAt: Timestamp;
   status: 'pending' | 'cooking' | 'ready' | 'served';
@@ -62,10 +63,8 @@ export default function KdsPage() {
     if (!firestore || !tenantId) return null;
     return query(
         collectionGroup(firestore, `orders`),
+        where('tenantId', '==', tenantId), // CRITICAL: Filter by tenant
         where('status', '!=', 'served')
-        // In a multi-tenant app, you'd add a where clause for the tenantId on each order doc.
-        // For this example, collectionGroup will get orders from all tenants.
-        // A security rule would be required to enforce tenant isolation.
     );
   }, [firestore, tenantId]);
 
@@ -117,9 +116,7 @@ export default function KdsPage() {
   
   const sortedOrders = useMemo(() => {
     if (!orders) return [];
-    // The collectionGroup query doesn't know about the parent doc, so tableId won't be on the order object.
-    // In a real app, you'd store tableId on the order doc itself. We'll simulate for now.
-    return [...orders].sort((a,b) => a.createdAt.seconds - b.createdAt.seconds).map(o => ({...o, tableId: o.tableId || 'T?'}));
+    return [...orders].sort((a,b) => a.createdAt.seconds - b.createdAt.seconds);
   }, [orders]);
 
   return (
@@ -131,16 +128,26 @@ export default function KdsPage() {
       </header>
 
       {isLoading && (
-         <div className="flex flex-1 items-center justify-center text-muted-foreground">
-            <CookingPot className="w-8 h-8 animate-bounce" />
-            <p className="ml-2">Loading Orders...</p>
-         </div>
+        <main className="flex-1 p-4 lg:p-6 overflow-y-auto">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                {Array.from({ length: 5 }).map((_, i) => (
+                    <Card key={i} className="flex flex-col">
+                        <CardHeader><Skeleton className="h-6 w-3/4" /></CardHeader>
+                        <CardContent className="flex-grow space-y-2">
+                           <Skeleton className="h-4 w-full" />
+                           <Skeleton className="h-4 w-5/6" />
+                        </CardContent>
+                        <CardFooter><Skeleton className="h-10 w-full" /></CardFooter>
+                    </Card>
+                ))}
+            </div>
+        </main>
       )}
       
       {error && (
         <div className="flex flex-1 items-center justify-center text-red-500">
            <AlertCircle className="w-8 h-8" />
-           <p className="ml-2">Error loading orders. Please check permissions.</p>
+           <p className="ml-2">Error loading orders: {error.message}. Please check permissions.</p>
         </div>
       )}
 
@@ -154,54 +161,56 @@ export default function KdsPage() {
          </div>
       )}
 
-      <main className="flex-1 p-4 lg:p-6 overflow-y-auto">
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-          {sortedOrders.map(order => (
-            <Card key={order.id} className={cn('flex flex-col border-2 transition-all', getStatusColor(order.status))}>
-              <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-xl font-bold">Table {order.tableId}</CardTitle>
-                <div className="text-sm text-muted-foreground">
-                  <TimeSince timestamp={order.createdAt} />
-                </div>
-              </CardHeader>
-              <CardContent className="flex-grow space-y-2">
-                <ul className="divide-y">
-                  {order.items.map((item, index) => (
-                    <li key={index} className="py-1 flex justify-between">
-                      <span className="font-medium">{item.name.de}</span>
-                      <span className="font-bold text-primary">x {item.qty}</span>
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-              <CardFooter className="flex flex-col gap-2 pt-4">
-                 {isSubmitting === order.id ? <Button className="w-full" disabled><Loader2 className="animate-spin" /></Button> : (
-                    <>
-                        {order.status === 'pending' && (
-                        <Button onClick={() => updateStatus(order.id, order.tableId, 'cooking')} className="w-full" variant="secondary">
-                            <CookingPot className="mr-2"/>
-                            Start Cooking
-                        </Button>
-                        )}
-                        {order.status === 'cooking' && (
-                        <Button onClick={() => updateStatus(order.id, order.tableId, 'ready')} className="w-full bg-accent hover:bg-accent/90 text-accent-foreground">
-                            <Check className="mr-2" />
-                            Mark as Ready
-                        </Button>
-                        )}
-                        {order.status === 'ready' && (
-                        <Button onClick={() => updateStatus(order.id, order.tableId, 'served')} className="w-full">
-                            <Utensils className="mr-2"/>
-                            Mark as Served
-                        </Button>
-                        )}
-                    </>
-                 )}
-              </CardFooter>
-            </Card>
-          ))}
-        </div>
-      </main>
+      {!isLoading && !error && sortedOrders.length > 0 && (
+        <main className="flex-1 p-4 lg:p-6 overflow-y-auto">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+            {sortedOrders.map(order => (
+                <Card key={order.id} className={cn('flex flex-col border-2 transition-all', getStatusColor(order.status))}>
+                <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-xl font-bold">Table {order.tableId}</CardTitle>
+                    <div className="text-sm text-muted-foreground">
+                    <TimeSince timestamp={order.createdAt} />
+                    </div>
+                </CardHeader>
+                <CardContent className="flex-grow space-y-2">
+                    <ul className="divide-y">
+                    {order.items.map((item, index) => (
+                        <li key={index} className="py-1 flex justify-between">
+                        <span className="font-medium">{item.name.de}</span>
+                        <span className="font-bold text-primary">x {item.qty}</span>
+                        </li>
+                    ))}
+                    </ul>
+                </CardContent>
+                <CardFooter className="flex flex-col gap-2 pt-4">
+                    {isSubmitting === order.id ? <Button className="w-full" disabled><Loader2 className="animate-spin" /></Button> : (
+                        <>
+                            {order.status === 'pending' && (
+                            <Button onClick={() => updateStatus(order.id, order.tableId, 'cooking')} className="w-full" variant="secondary">
+                                <CookingPot className="mr-2"/>
+                                Start Cooking
+                            </Button>
+                            )}
+                            {order.status === 'cooking' && (
+                            <Button onClick={() => updateStatus(order.id, order.tableId, 'ready')} className="w-full bg-accent hover:bg-accent/90 text-accent-foreground">
+                                <Check className="mr-2" />
+                                Mark as Ready
+                            </Button>
+                            )}
+                            {order.status === 'ready' && (
+                            <Button onClick={() => updateStatus(order.id, order.tableId, 'served')} className="w-full">
+                                <Utensils className="mr-2"/>
+                                Mark as Served
+                            </Button>
+                            )}
+                        </>
+                    )}
+                </CardFooter>
+                </Card>
+            ))}
+            </div>
+        </main>
+      )}
     </div>
   );
 }

@@ -227,7 +227,7 @@
         "properties": {
             "name": {"type": "string"},
             "seats": {"type": "number"},
-            "status": {"type": "string", "enum": ["free", "occupied", "reserved"]},
+            "status": {"type": "string", "enum": ["free", "occupied", "serving"]},
             "currentOrderId": {"type": "string"}
         },
         "required": ["name", "status"]
@@ -239,6 +239,8 @@
         "description": "Represents an order for the Kitchen Display System.",
         "properties": {
             "orderId": {"type": "string"},
+            "tableId": {"type": "string"},
+            "tenantId": {"type": "string"},
             "items": {
                 "type": "array",
                 "items": {

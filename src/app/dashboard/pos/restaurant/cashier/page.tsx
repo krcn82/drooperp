@@ -1,4 +1,3 @@
-
 'use client';
 import PosClient from '../../components/PosClient';
 import CartPanel from "../../components/CartPanel";
@@ -40,6 +39,8 @@ export default function RestaurantPOSPage() {
                 })),
                 status: 'pending',
                 createdAt: serverTimestamp(),
+                tenantId: tenantId, // Add tenantId for security rules
+                tableId: tableId,
             };
 
             await addDocumentNonBlocking(orderRef, orderData);
