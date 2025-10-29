@@ -92,7 +92,7 @@ export async function registerTenant(prevState: State, formData: FormData): Prom
   const userTenantData = { tenantId: tenantId };
   setDocumentNonBlocking(userTenantMappingRef, userTenantData, {});
 
-  // Create default module settings for the new tenant
+  // 5. Create default module settings for the new tenant
   const modulesRef = doc(firestore, `tenants/${tenantId}/settings/modules`);
   const defaultModules = {
       posShop: true,
