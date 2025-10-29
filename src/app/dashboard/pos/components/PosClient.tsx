@@ -15,6 +15,7 @@ interface PosClientProps {
         tenantId: string | null;
         language: 'de' | 'en';
         selectedCategory: string | null;
+        setSelectedCategory: (id: string | null) => void;
         addToCart: (product: Product) => void;
         cart: CartItem[];
         setCart: React.Dispatch<React.SetStateAction<CartItem[]>>;
@@ -102,6 +103,7 @@ export default function PosClient({ children, posMode }: PosClientProps) {
         tenantId,
         language,
         selectedCategory,
+        setSelectedCategory,
         addToCart,
         cart,
         setCart,
