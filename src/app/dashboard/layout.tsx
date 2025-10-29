@@ -36,7 +36,7 @@ import { Badge } from '@/components/ui/badge';
 
 const allNavItems = [
   {id: 'dashboard', href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard'},
-  {id: 'pos', href: '/dashboard/pos', icon: ShoppingCart, label: 'Point of Sale'},
+  {id: 'pos', href: '/dashboard/pos/retail', icon: ShoppingCart, label: 'Point of Sale'},
   {id: 'kds', href: '/kds', icon: CookingPot, label: 'Kitchen Display'},
   {id: 'reports', href: '/dashboard/reports', icon: LineChart, label: 'Reports'},
   {id: 'assets', href: '/dashboard/assets', icon: FileUp, label: 'Invoices & Assets'},
@@ -112,6 +112,13 @@ export default function DashboardLayout({children}: {children: React.ReactNode})
   const navItems = useMemo(() => {
     if (areModulesLoading || !moduleSettings) return allNavItems.filter(item => ['dashboard', 'reports', 'assets', 'datev-export', 'gdpr', 'settings'].includes(item.id)); // show core items while loading
     
+    let items = allNavItems;
+    if(moduleSettings.posRestaurant) {
+      const posItem = items.find(i => i.id === 'pos');
+      if(posItem) posItem.href = '/dashboard/pos/restaurant';
+    }
+
+
     const visibleItems = new Set(['dashboard', 'reports', 'assets', 'datev-export', 'gdpr', 'settings']);
     
     if (moduleSettings.posShop || moduleSettings.posRestaurant) visibleItems.add('pos');
