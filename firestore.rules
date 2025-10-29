@@ -2,30 +2,29 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // Rule 1: Global User Document
-    // - A user can read their own document in the top-level 'users' collection to find their tenantId.
-    // - No one else can read this document.
-    // - Only the system (backend functions) should create/update this. Client-side updates are disallowed.
-    match /users/{userId} {
-      allow read: if request.auth != null && request.auth.uid == userId;
-      allow write: if false; // Disallow client-side writes
+    
+    // Helper function to check if a user belongs to a specific tenant.
+    function isUserOfTenant(tenantId) {
+      // It checks the /users/{uid} document to see if the tenantId matches.
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
     }
 
-    // Rule 2: Tenant Data Access
-    // - A user can access documents within a tenant if their UID is present in that tenant's 'users' subcollection.
-    match /tenants/{tenantId} {
-      // Allow a user to list the tenants they own.
-      allow list: if request.auth != null && request.query.where.path == "ownerUid" && request.query.where.op == "==" && request.query.where.value == request.auth.uid;
-      
-      // Allow read/write access to a specific tenant document and its subcollections
-      // if the user is a member of that tenant.
-      allow read, write: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
+    // Rule 1: Secure the top-level 'users' collection.
+    // Users can read/write their own mapping document to know their tenant, but not others.
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
     }
     
-    // Catch-all for any other collections
-    match /{document=**} {
-      allow read, write: if false;
+    // Rule 2: Secure all tenant data.
+    // A user can read or write any document or subcollection inside a tenant's path
+    // IF they are a user of that tenant (verified by the isUserOfTenant function).
+    match /tenants/{tenantId}/{document=**} {
+      allow read, write: if request.auth != null && isUserOfTenant(tenantId);
+    }
+
+    // Rule 3: Allow read access to global plans for all authenticated users.
+    match /global/plans/{planId} {
+        allow read: if request.auth != null;
     }
   }
 }
