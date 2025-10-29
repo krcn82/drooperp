@@ -1,11 +1,9 @@
 import * as admin from "firebase-admin";
-import { recordTransaction } from "./recordTransaction";
-import { startDevicePayment } from "./startDevicePayment";
-import { paymentDeviceCallback } from "./paymentDeviceCallback";
-import { processStripePayment } from "./stripe";
-import { createFinanzOnlineExport } from "./createFinanzOnlineExport";
-import { submitDEPToFinanzOnline } from "./submitFinanzOnline";
-import { logFinanzOnlineTransmission } from "./logFinanzOnline";
+import { recordTransaction } from "../recordTransaction";
+import { startDevicePayment } from "../paymentDevice";
+import { paymentDeviceCallback } from "../paymentDevice";
+import { generateZReport } from "../generateZReport";
+import { processStripePayment } from "../stripe";
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -15,8 +13,6 @@ export {
   recordTransaction,
   startDevicePayment,
   paymentDeviceCallback,
+  generateZReport,
   processStripePayment,
-  createFinanzOnlineExport,
-  submitDEPToFinanzOnline,
-  logFinanzOnlineTransmission,
 };
