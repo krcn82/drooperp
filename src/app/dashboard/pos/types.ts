@@ -29,7 +29,7 @@ export type Customer = {
     vipTier: "none" | "silver" | "gold" | "platinum";
 }
 
-export type TableStatus = 'free' | 'occupied' | 'reserved';
+export type TableStatus = 'free' | 'occupied' | 'serving';
 
 export type Table = {
   id: string;

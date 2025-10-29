@@ -1,3 +1,4 @@
+
 'use client';
 
 import React from 'react';
@@ -16,13 +17,13 @@ interface TableMapProps {
 const statusStyles: Record<TableStatus, string> = {
   free: 'border-green-500 bg-green-50/50 hover:bg-green-100',
   occupied: 'border-red-500 bg-red-50/50 hover:bg-red-100',
-  reserved: 'border-blue-500 bg-blue-50/50 hover:bg-blue-100',
+  serving: 'border-blue-500 bg-blue-50/50 hover:bg-blue-100',
 };
 
 const statusBadgeVariants: Record<TableStatus, 'secondary' | 'destructive' | 'default'> = {
     free: 'secondary',
     occupied: 'destructive',
-    reserved: 'default',
+    serving: 'default',
 };
 
 export default function TableMap({ tenantId }: TableMapProps) {
