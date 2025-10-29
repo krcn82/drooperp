@@ -3,30 +3,24 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper function to get the user's tenant ID from the global users collection.
-    function getUserTenantId() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId;
-    }
-
-    // Allow a user to read their own tenant mapping. This is the first step for all other rules.
+    // Rule 1: Allow users to read their own mapping document to find their tenantId
     match /users/{userId} {
-      allow read: if request.auth.uid == userId;
+      allow read: if request.auth != null && request.auth.uid == userId;
     }
 
-    // Allow any authenticated user to read the global plans.
-    match /global/plans/{planId} {
-      allow read: if request.auth != null;
-    }
-
-    // This single recursive rule grants access to a user for all documents
-    // within their own tenant.
+    // Rule 2: Allow users to read/write any data within their own tenant
     match /tenants/{tenantId}/{document=**} {
-      allow read, write: if request.auth != null && getUserTenantId() == tenantId;
+      allow read, write: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
     }
 
-    // Allow authenticated users to create mail documents for the email extension.
+    // Global collections that might need different rules
+    match /global/plans/{planId} {
+        allow read: if true; // Publicly readable plans
+    }
+    
+    // Mail collection for Trigger Email Extension
     match /mail/{mailId} {
-        allow create: if request.auth != null;
+      allow create: if request.auth != null;
     }
   }
 }
