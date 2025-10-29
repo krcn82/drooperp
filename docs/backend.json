@@ -883,6 +883,31 @@
             "createdAt": { "type": "string", "format": "date-time" }
         },
         "required": ["fn", "details", "severity", "createdAt"]
+    },
+    "Display": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Display",
+      "type": "object",
+      "description": "Represents the state of a customer-facing display.",
+      "properties": {
+        "total": {
+          "type": "number",
+          "description": "The current total to be displayed."
+        },
+        "customer": {
+          "type": "object",
+          "properties": {
+            "name": {"type": "string"},
+            "loyaltyPoints": {"type": "number"},
+            "bonusActive": {"type": "boolean"}
+          }
+        },
+        "status": {
+          "type": "string",
+          "enum": ["idle", "processing", "completed"],
+          "description": "The current payment status."
+        }
+      }
     }
   },
   "auth": {
@@ -1042,6 +1067,10 @@
         "$ref": "#/entities/Mail"
       },
       "description": "Collection for triggering email sending via Firebase Extensions (e.g., SendGrid, Mailgun)."
+    },
+    "/tenants/{tenantId}/display/current": {
+        "schema": { "$ref": "#/entities/Display" },
+        "description": "Singleton document to control the state of the customer-facing display."
     }
   }
 }

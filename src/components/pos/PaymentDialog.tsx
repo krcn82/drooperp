@@ -15,10 +15,11 @@ import { Loader2, Landmark, CreditCard, Wallet, MonitorSmartphone, User, Search,
 import { processPayment } from '@/app/dashboard/pos/actions';
 import { useToast } from '@/hooks/use-toast';
 import { useCashDrawer } from '@/hooks/use-cash-drawer';
-import { useFirebaseApp } from '@/firebase';
+import { useFirebaseApp, setDocumentNonBlocking } from '@/firebase';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { doc } from 'firebase/firestore';
 
 type PaymentMethod = 'cash' | 'card' | 'bankomat' | 'stripe';
 
@@ -58,48 +59,65 @@ export default function PaymentDialog({
   const [isCheckingCustomer, setIsCheckingCustomer] = useState(false);
   const { toast } = useToast();
   const { id: cashRegisterId } = useCashDrawer();
-  const firebaseApp = useFirebaseApp();
+  const { firebaseApp, firestore } = useFirebaseApp();
 
   const [customerData, setCustomerData] = useState<CustomerData | null>(null);
   const [discountedTotal, setDiscountedTotal] = useState(total);
 
+  const displayRef = firestore ? doc(firestore, `tenants/${tenantId}/display/current`) : null;
+  
   useEffect(() => {
-    // Reset total when dialog opens or total changes
     setDiscountedTotal(total);
     setCustomerData(null);
-    if (selectedCustomer?.id) {
-        fetchLoyalty(selectedCustomer.id);
+    if (open) {
+      if (displayRef) {
+        setDocumentNonBlocking(displayRef, { total: total, status: 'idle', customer: null }, { merge: true });
+      }
+      if (selectedCustomer?.id) {
+          fetchLoyalty(selectedCustomer.id);
+      }
     }
   }, [open, total, selectedCustomer]);
 
+
   const fetchLoyalty = async (customerId: string) => {
-    if (!firebaseApp) return;
+    if (!firebaseApp || !displayRef) return;
     setIsCheckingCustomer(true);
     const functions = getFunctions(firebaseApp);
     const getLoyalty = httpsCallable< { tenantId: string; customerId: string }, CustomerData>(functions, 'getCustomerLoyalty');
     try {
       const res = await getLoyalty({ tenantId, customerId });
       setCustomerData(res.data);
-      toast({
-          title: "Customer Found",
-          description: `Welcome back, ${res.data.fullName}!`,
-      });
+      
+      const bonusActive = res.data.loyaltyPoints >= 100;
+      let finalTotal = total;
 
-      if (res.data.loyaltyPoints >= 100) {
+      const customerDisplayData = {
+          name: res.data.fullName,
+          loyaltyPoints: res.data.loyaltyPoints,
+          bonusActive: bonusActive,
+      };
+
+      if (bonusActive) {
         const discount = total * 0.05;
-        setDiscountedTotal(total - discount);
+        finalTotal = total - discount;
+        setDiscountedTotal(finalTotal);
         toast({
           className: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 border-green-300',
           title: "🎉 5% Bonus Applied!",
           description: `Discount of €${discount.toFixed(2)} applied for being a loyal customer.`
         });
       }
+      
+      setDocumentNonBlocking(displayRef, { customer: customerDisplayData, total: finalTotal }, { merge: true });
+      
     } catch (err: any) {
       toast({
           variant: 'destructive',
           title: "Customer Not Found",
           description: "Could not retrieve loyalty information for this customer.",
       });
+      setDocumentNonBlocking(displayRef, { customer: null }, { merge: true });
     } finally {
         setIsCheckingCustomer(false);
     }
@@ -107,19 +125,23 @@ export default function PaymentDialog({
 
   const completePayment = async (method: PaymentMethod) => {
     setIsLoading(true);
+    if (displayRef) {
+        setDocumentNonBlocking(displayRef, { status: 'processing' }, { merge: true });
+    }
     const finalAmount = discountedTotal;
     const paymentData = { method, amount: finalAmount, cashRegisterId };
     
-    // First, process the payment via the existing server action
     const paymentResult = await processPayment(tenantId, transactionId, paymentData);
 
     if (!paymentResult.success) {
       toast({ variant: 'destructive', title: 'Payment Error', description: paymentResult.message });
+      if (displayRef) {
+        setDocumentNonBlocking(displayRef, { status: 'idle' }, { merge: true });
+      }
       setIsLoading(false);
       return;
     }
     
-    // If payment is successful, update loyalty points
     if (selectedCustomer?.id && firebaseApp) {
         const functions = getFunctions(firebaseApp);
         const updateLoyalty = httpsCallable(functions, "updateLoyaltyPoints");
@@ -136,6 +158,11 @@ export default function PaymentDialog({
         }
     }
     
+    if (displayRef) {
+      setDocumentNonBlocking(displayRef, { status: 'completed' }, { merge: true });
+      setTimeout(() => setDocumentNonBlocking(displayRef, { status: 'idle', total: 0, customer: null }, { merge: true }), 5000);
+    }
+
     setIsLoading(false);
     onPaymentSuccess(paymentResult.qrCode || 'payment-success-qr');
     resetState();
@@ -149,6 +176,9 @@ export default function PaymentDialog({
 
   const handleClose = () => {
     if (!isLoading) {
+      if (displayRef) {
+        setDocumentNonBlocking(displayRef, { status: 'idle', total: 0, customer: null }, { merge: true });
+      }
       setView('select');
       onOpenChange(false);
     }
@@ -164,17 +194,21 @@ export default function PaymentDialog({
           <DialogDescription>Total Amount: €{currentTotal.toFixed(2)}</DialogDescription>
         </DialogHeader>
 
-        {customerData && (
+        {selectedCustomer && (customerData || isCheckingCustomer) && (
              <div className="text-center text-card-foreground p-4 bg-muted rounded-lg">
-              <p className="font-semibold text-lg">{customerData.fullName}</p>
-              <p className="text-sm text-muted-foreground">
-                Current Points: {customerData.loyaltyPoints}
-              </p>
-              {customerData.loyaltyPoints >= 100 && (
-                <p className="text-green-600 font-medium mt-1 flex items-center justify-center gap-1">
-                  <Gift size={16} /> 5% Bonus Activated
-                </p>
-              )}
+                {isCheckingCustomer ? <Loader2 className="animate-spin mx-auto"/> : (
+                    <>
+                        <p className="font-semibold text-lg">{customerData?.fullName}</p>
+                        <p className="text-sm text-muted-foreground">
+                            Current Points: {customerData?.loyaltyPoints}
+                        </p>
+                        {customerData && customerData.loyaltyPoints >= 100 && (
+                            <p className="text-green-600 font-medium mt-1 flex items-center justify-center gap-1">
+                            <Gift size={16} /> 5% Bonus Activated
+                            </p>
+                        )}
+                    </>
+                )}
             </div>
         )}
         
