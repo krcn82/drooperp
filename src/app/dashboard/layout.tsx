@@ -37,7 +37,7 @@ import { Badge } from '@/components/ui/badge';
 const allNavItems = [
   {id: 'dashboard', href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard'},
   {id: 'pos', href: '/dashboard/pos', icon: ShoppingCart, label: 'Point of Sale'},
-  {id: 'kds', href: '/kds', icon: CookingPot, label: 'Kitchen Display'},
+  {id: 'kds', href: '/dashboard/pos/restaurant/kitchen', icon: CookingPot, label: 'Kitchen Display'},
   {id: 'reports', href: '/dashboard/reports', icon: LineChart, label: 'Reports'},
   {id: 'assets', href: '/dashboard/assets', icon: FileUp, label: 'Invoices & Assets'},
   {id: 'datev-export', href: '/dashboard/datev-export', icon: FileDown, label: 'DATEV Export'},
