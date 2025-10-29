@@ -37,23 +37,23 @@ export default function DashboardPage() {
     return collection(firestore, `tenants/${tenantId}/users`);
   }, [firestore, tenantId]);
   
-  const transactionsRef = useMemoFirebase(() => {
+  const ordersRef = useMemoFirebase(() => {
     if (!firestore || !tenantId) return null;
-    return collection(firestore, `tenants/${tenantId}/transactions`);
+    return collection(firestore, `tenants/${tenantId}/orders`);
   }, [firestore, tenantId]);
 
   const { data: tenant, isLoading: isTenantLoading } = useDoc<Tenant>(tenantRef);
   const { data: users, isLoading: areUsersLoading } = useCollection(usersRef);
-  const { data: transactions, isLoading: areTransactionsLoading } = useCollection(transactionsRef);
+  const { data: orders, isLoading: areOrdersLoading } = useCollection(ordersRef);
 
   const tenantName = tenant?.name || "Droop Inc.";
-  const totalSales = transactions?.length || 0;
+  const totalSales = orders?.length || 0;
   const activeUsers = users?.length || 0;
   const subscriptionPlan = tenant?.plan || "Free";
   const creationDate = tenant?.createdAt?.toDate()?.toLocaleDateString() || new Date().toLocaleDateString();
   const hasActivity = totalSales > 0 || activeUsers > 1;
 
-  const isLoading = isTenantLoading || areUsersLoading || areTransactionsLoading;
+  const isLoading = isTenantLoading || areUsersLoading || areOrdersLoading;
 
   return (
     <>
