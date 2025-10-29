@@ -26,17 +26,17 @@ export default function RetailPOSPage() {
   return (
     <PosClient posMode="retail">
       {({ tenantId, language, cart, removeFromCart, clearCart, onPay, setCart, setTransactionId, selectedCustomer, setSelectedCustomer, selectedCategory, addToCart, setSelectedCategory }) => (
-        <div className="grid grid-cols-1 md:grid-cols-3 h-screen bg-card text-card-foreground">
-          <div className="md:col-span-2 flex flex-col h-screen">
-            <header className="p-4 border-b flex justify-between items-center gap-4 bg-card">
+        <div className="grid grid-cols-1 md:grid-cols-3 h-[calc(100vh-60px)] bg-card text-card-foreground">
+          <div className="md:col-span-2 flex flex-col h-full">
+            <header className="p-4 border-b flex justify-between items-center gap-4 bg-card shrink-0">
               {tenantId && <CategoryTabs tenantId={tenantId} selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} language={language} />}
             </header>
             <main className="flex-1 overflow-y-auto p-4 bg-muted/30">
               {tenantId && <ProductGrid tenantId={tenantId} categoryId={selectedCategory} addToCart={addToCart} language={language} />}
             </main>
           </div>
-          <div className="md:col-span-1 bg-card border-l flex flex-col h-screen">
-            <div className="p-4 border-b">
+          <div className="md:col-span-1 bg-card border-l flex flex-col h-full">
+            <div className="p-4 border-b shrink-0">
               <OpenDrawerButton />
             </div>
             {tenantId && <CartPanel

@@ -1,3 +1,4 @@
+
 import PosClient from '../../components/PosClient';
 import CartPanel from "../../components/CartPanel";
 import ProductGrid from "../../components/ProductGrid";
@@ -24,9 +25,24 @@ export default function RestaurantPOSPage() {
   return (
     <PosClient posMode="restaurant">
       {({ tenantId, language, cart, removeFromCart, clearCart, onPay, setCart, setTransactionId, selectedCustomer, setSelectedCustomer, selectedCategory, addToCart, setSelectedCategory }) => (
-        <div className="grid grid-cols-12 h-screen bg-card text-card-foreground">
-           <div className="col-span-4 bg-background border-r flex flex-col">
-            <div className="p-4 border-b">
+        <div className="grid grid-cols-12 h-[calc(100vh-60px)] bg-card text-card-foreground">
+           <div className="col-span-8 flex flex-col h-full">
+            <header className="p-4 border-b flex justify-between items-center gap-4 bg-card shrink-0">
+              {tenantId && <CategoryTabs tenantId={tenantId} selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} language={language} />}
+            </header>
+            <main className="flex-1 overflow-y-auto p-4 bg-muted/30">
+                <div className="grid grid-cols-12 gap-6 h-full">
+                    <div className="col-span-5 h-full overflow-y-auto">
+                      {tenantId && <TableMap tenantId={tenantId} />}
+                    </div>
+                    <div className="col-span-7 h-full overflow-y-auto">
+                        {tenantId && <ProductGrid tenantId={tenantId} categoryId={selectedCategory} addToCart={addToCart} language={language} />}
+                    </div>
+                </div>
+            </main>
+          </div>
+          <div className="col-span-4 bg-card border-l flex flex-col h-full">
+            <div className="p-4 border-b shrink-0">
               <OpenDrawerButton />
             </div>
             {tenantId && <CartPanel
@@ -42,19 +58,6 @@ export default function RestaurantPOSPage() {
               selectedCustomer={selectedCustomer}
               setSelectedCustomer={setSelectedCustomer}
             />}
-          </div>
-          <div className="col-span-8 flex flex-col">
-            <header className="p-4 border-b flex justify-between items-center gap-4">
-              {tenantId && <CategoryTabs tenantId={tenantId} selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} language={language} />}
-            </header>
-            <main className="flex-1 overflow-auto p-4">
-                <div className="grid grid-cols-12 gap-6">
-                    <div className="col-span-5">{tenantId && <TableMap tenantId={tenantId} />}</div>
-                    <div className="col-span-7">
-                        {tenantId && <ProductGrid tenantId={tenantId} categoryId={selectedCategory} addToCart={addToCart} language={language} />}
-                    </div>
-                </div>
-            </main>
           </div>
         </div>
       )}
