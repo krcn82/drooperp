@@ -16,7 +16,11 @@ type KdsOrder = {
   id: string;
   tableId: string;
   tenantId: string;
-  items: { name: { de: string; en: string; }; qty: number }[];
+  items: { 
+    name: { de: string; en: string; }; 
+    qty: number;
+    productId: string;
+  }[];
   createdAt: Timestamp;
   status: 'pending' | 'cooking' | 'ready' | 'served';
 };
