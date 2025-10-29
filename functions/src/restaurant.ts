@@ -23,6 +23,7 @@ export const createKdsOrder = onCall(async (request) => {
     const kdsOrderRef = firestore.collection(`tenants/${tenantId}/kdsOrders`).doc();
 
     const newOrder = {
+      orderId: kdsOrderRef.id, // Store the document ID within the document
       items: orderData.items,
       tableId: orderData.tableId,
       status: 'pending', // Initial status

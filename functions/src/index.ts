@@ -16,6 +16,7 @@ export { automationWorker } from './automationWorker';
 // Data Export and Reporting
 export { generateDatevExport } from './generateDatevExport';
 export { generateReport } from './generateReport';
+export { generateZReport } from './generateZReport';
 
 
 // Payment Processing
@@ -40,6 +41,5 @@ export { sendDailySystemReport } from './sendDailySystemReport';
 // export { logFunctionExecution } from './functions-monitor';
 // export { sendEmailNotification } from './email-notifications';
 
-export * from './pos';
 export { logError } from './lib/error-logging';
 export { createFinanzOnlineExport } from './pos/createFinanzOnlineExport';

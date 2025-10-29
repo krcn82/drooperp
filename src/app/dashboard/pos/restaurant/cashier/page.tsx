@@ -1,16 +1,53 @@
 
+'use client';
 import PosClient from '../../components/PosClient';
 import CartPanel from "../../components/CartPanel";
 import ProductGrid from "../../components/ProductGrid";
 import CategoryTabs from "../../components/CategoryTabs";
 import TableMap from '../../components/TableMap';
 import { Button } from '@/components/ui/button';
-import { Landmark } from 'lucide-react';
+import { Landmark, ChefHat } from 'lucide-react';
 import { useCashDrawer } from '@/hooks/use-cash-drawer';
-
+import { useFirebaseApp } from '@/firebase';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { useToast } from '@/hooks/use-toast';
+import { type CartItem } from '../../types';
+import { useState, useMemo } from 'react';
+import { Loader2 } from 'lucide-react';
 
 export default function RestaurantPOSPage() {
+    const { toast } = useToast();
+    const firebaseApp = useFirebaseApp();
+    const functions = useMemo(() => firebaseApp ? getFunctions(firebaseApp) : null, [firebaseApp]);
+    const [isSendingToKitchen, setIsSendingToKitchen] = useState(false);
 
+    const handleSendToKitchen = async (cart: CartItem[], tenantId: string | null) => {
+        if (!tenantId || !functions || cart.length === 0) {
+            toast({ variant: 'destructive', title: 'Error', description: 'Cannot send to kitchen.' });
+            return;
+        }
+
+        setIsSendingToKitchen(true);
+        try {
+            const createKdsOrder = httpsCallable(functions, 'createKdsOrder');
+            const orderData = {
+                // For now, we'll hardcode a tableId. In a real app, you'd select this.
+                tableId: 'T1', 
+                items: cart.map(item => ({
+                    productId: item.id,
+                    name: { de: item.name.de, en: item.name.en },
+                    qty: item.quantity,
+                })),
+            };
+            await createKdsOrder({ tenantId, orderData });
+            toast({ title: 'Order Sent', description: 'The order has been sent to the kitchen.' });
+        } catch (error: any) {
+            toast({ variant: 'destructive', title: 'Send Failed', description: error.message });
+        } finally {
+            setIsSendingToKitchen(false);
+        }
+    };
+    
     const OpenDrawerButton = () => {
         'use client';
         const { openDrawerDialog } = useCashDrawer();
@@ -40,6 +77,17 @@ export default function RestaurantPOSPage() {
                     </div>
                 </div>
             </main>
+             <div className="p-4 border-t bg-card flex justify-end">
+                <Button 
+                    size="lg" 
+                    className="bg-yellow-500 hover:bg-yellow-600 text-black"
+                    disabled={isSendingToKitchen || cart.length === 0}
+                    onClick={() => handleSendToKitchen(cart, tenantId)}
+                >
+                   {isSendingToKitchen && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                   <ChefHat className="mr-2 h-5 w-5" /> Send to Kitchen
+                </Button>
+            </div>
           </div>
           <div className="col-span-4 bg-card border-l flex flex-col h-full">
             <div className="p-4 border-b shrink-0">
