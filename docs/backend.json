@@ -906,6 +906,11 @@
           "type": "string",
           "enum": ["idle", "processing", "completed"],
           "description": "The current payment status."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of the last update."
         }
       }
     }
