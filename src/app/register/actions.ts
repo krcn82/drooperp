@@ -91,6 +91,17 @@ export async function registerTenant(prevState: State, formData: FormData): Prom
   const userTenantMappingRef = doc(firestore, 'users', user.uid);
   const userTenantData = { tenantId: tenantId };
   setDocumentNonBlocking(userTenantMappingRef, userTenantData, {});
+
+  // Create default module settings for the new tenant
+  const modulesRef = doc(firestore, `tenants/${tenantId}/settings/modules`);
+  const defaultModules = {
+      posShop: true,
+      posRestaurant: false,
+      calendar: false,
+      kiosk: false,
+      aiAssistant: true,
+  };
+  setDocumentNonBlocking(modulesRef, defaultModules, {});
   
   // As Firestore writes are now non-blocking, we optimistically proceed.
   // If a permission error occurs, the global error handler will catch it on the client.
