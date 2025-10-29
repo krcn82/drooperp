@@ -1,62 +1,86 @@
 "use client";
 import { useEffect, useState } from "react";
-import { doc, onSnapshot } from "firebase/firestore";
-import { useFirestore } from "@/firebase";
+import { useFirestore, useDoc, useMemoFirebase } from "@/firebase";
+import { doc, Timestamp } from 'firebase/firestore';
+import { Loader2, Gift, CheckCircle } from 'lucide-react';
 
-export default function CustomerDisplay() {
-  const [display, setDisplay] = useState<any>(null);
-  const firestore = useFirestore();
+interface DisplayState {
+    total: number;
+    customer?: {
+        name: string;
+        loyaltyPoints: number;
+        bonusActive: boolean;
+    };
+    status: 'idle' | 'processing' | 'completed';
+}
 
-  useEffect(() => {
-    if (!firestore) return;
+export default function CustomerDisplayPage() {
+    const firestore = useFirestore();
+    const [tenantId, setTenantId] = useState<string | null>(null);
 
-    const tenantId = localStorage.getItem('tenantId') || "default-tenant"; 
-    const unsub = onSnapshot(doc(firestore, "tenants", tenantId, "display", "current"), (docSnap) => {
-      setDisplay(docSnap.data());
-    });
-    return () => unsub();
-  }, [firestore]);
+    useEffect(() => {
+        // This page is often opened in a new window, so we rely on localStorage
+        // which would have been set during the cashier's login.
+        const storedTenantId = localStorage.getItem('tenantId');
+        setTenantId(storedTenantId);
+    }, []);
 
-  if (!display) {
+    const displayDocRef = useMemoFirebase(() => {
+        if (!firestore || !tenantId) return null;
+        return doc(firestore, `tenants/${tenantId}/display/current`);
+    }, [firestore, tenantId]);
+
+    const { data: displayState, isLoading } = useDoc<DisplayState>(displayDocRef);
+
+    if (isLoading && !displayState) {
+        return (
+            <div className="h-screen w-screen flex items-center justify-center bg-gray-900 text-white">
+                <Loader2 className="h-12 w-12 animate-spin" />
+            </div>
+        );
+    }
+    
+    const showWelcome = !displayState || displayState.status === 'idle' || displayState.total === 0;
+
+    if (showWelcome) {
+         return (
+            <div className="h-screen flex items-center justify-center bg-gray-900 text-white text-3xl font-semibold text-center p-4">
+                💳 Waiting for next transaction...
+            </div>
+         )
+    }
+
     return (
-      <div className="h-screen flex items-center justify-center bg-black text-white text-3xl">
-        💳 Warten auf nächste Bestellung...
-      </div>
-    );
-  }
+        <div className="h-screen w-screen bg-gradient-to-br from-gray-900 to-gray-800 text-white flex flex-col items-center justify-center p-8 space-y-6 transition-all">
+            <div className="text-8xl font-bold tracking-tight">
+                € {displayState.total?.toFixed(2) ?? "0.00"}
+            </div>
 
-  return (
-    <div className="h-screen w-screen bg-gradient-to-br from-gray-900 to-gray-800 text-white flex flex-col items-center justify-center p-8 space-y-6 transition-all">
-      <div className="text-6xl font-bold tracking-wide">
-        € {display.total?.toFixed(2) ?? "0.00"}
-      </div>
+            {displayState.customer ? (
+                <div className="text-center space-y-2 p-6 rounded-lg bg-white/10">
+                    <p className="text-4xl font-semibold">{displayState.customer.name}</p>
+                    <p className="text-xl text-gray-300">
+                        Loyalty Points: {displayState.customer.loyaltyPoints ?? 0}
+                    </p>
+                    {displayState.customer.bonusActive && (
+                        <p className="text-green-400 text-2xl mt-2 animate-pulse flex items-center justify-center gap-2">
+                            <Gift /> 5% Loyalty Bonus Active!
+                        </p>
+                    )}
+                </div>
+            ) : (
+                <p className="text-2xl text-gray-400">No customer selected</p>
+            )}
 
-      {display.customer ? (
-        <div className="text-center space-y-2">
-          <p className="text-3xl font-semibold">{display.customer.name}</p>
-          <p className="text-lg text-gray-300">
-            Punkte: {display.customer.loyaltyPoints ?? 0}
-          </p>
-          {display.customer.bonusActive && (
-            <p className="text-green-400 text-xl mt-2 animate-pulse">
-              🎁 5 % Treuebonus aktiv!
-            </p>
-          )}
+            <div className="text-3xl mt-8 font-medium">
+                {displayState.status === 'processing' && <span className="text-yellow-300 flex items-center gap-2"><Loader2 className="animate-spin" />Processing Payment...</span>}
+                {displayState.status === 'completed' && (
+                    <div className="text-center space-y-4">
+                        <span className="text-green-400 flex items-center gap-3"><CheckCircle size={40}/> Payment Complete!</span>
+                        <p className="text-gray-200 text-2xl mt-4">Thank you! 👋</p>
+                    </div>
+                )}
+            </div>
         </div>
-      ) : (
-        <p className="text-xl text-gray-400">Kein Kunde ausgewählt</p>
-      )}
-
-      <div className="text-2xl mt-8 font-medium text-yellow-300">
-        {display.status === "processing" && "Zahlung wird verarbeitet..."}
-        {display.status === "completed" && (
-          <span className="text-green-400">✅ Zahlung abgeschlossen!</span>
-        )}
-      </div>
-
-      {display.status === "completed" && (
-        <p className="text-gray-200 text-lg mt-4">Danke, bis bald 👋</p>
-      )}
-    </div>
-  );
+    );
 }
