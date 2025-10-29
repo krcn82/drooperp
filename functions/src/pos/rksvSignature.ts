@@ -13,7 +13,7 @@ import * as crypto from "crypto";
 
 export async function generateRKSVSignature(
   tenantId: string,
-  totalAmount: number,
+  dataToSign: object, // Generic object for flexibility
   previousSignature: string
 ): Promise<{ signature: string; hash: string }> {
   const db = admin.firestore();
@@ -35,7 +35,7 @@ export async function generateRKSVSignature(
   }
 
   // === HASH-KETTE AUFBAU ===
-  const dataToHash = `${cashRegisterId}|${totalAmount.toFixed(2)}|${previousSignature}`;
+  const dataToHash = `${cashRegisterId}|${JSON.stringify(dataToSign)}|${previousSignature}`;
   const hash = crypto.createHash("sha256").update(dataToHash).digest("base64");
 
   // === DIGITALE SIGNATUR (RSA-SHA256) ===
@@ -49,7 +49,7 @@ export async function generateRKSVSignature(
     createdAt: admin.firestore.Timestamp.now(),
     cashRegisterId,
     certSerialNumber: certSerialNumber || "UNKNOWN",
-    totalAmount,
+    signedData: dataToSign, // Store the actual signed data for audit purposes
     hash,
     signature,
     previousSignature,

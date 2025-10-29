@@ -1,7 +1,6 @@
 import * as admin from "firebase-admin";
 import * as functions from "firebase-functions";
 import { generateRKSVSignature } from "./rksvSignature";
-import { Language, t } from "../i18n";
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -40,14 +39,9 @@ export async function closeDay(tenantId: string): Promise<void> {
     total += t.data().totalAmount || 0;
   });
 
-  // Z-Bericht-Dokument speichern
-  const zReportData = {
-    tenantId,
-    date: admin.firestore.Timestamp.now(),
-    totalSales: total,
-    transactionCount: transactionsSnap.size,
-    status: "finalized",
-  };
+  // Get the last signature from the chain for continuity
+  const lastChainLinkSnap = await rksvChainRef.orderBy("createdAt", "desc").limit(1).get();
+  const previousSignature = lastChainLinkSnap.empty ? "INITIAL_SIGNATURE" : lastChainLinkSnap.docs[0].data().signature;
 
   // The closeDay transaction object for signing
   const closeDayTransaction = {
@@ -58,18 +52,24 @@ export async function closeDay(tenantId: string): Promise<void> {
   };
 
   // RKSV-konforme neue Signatur erzeugen
-  const { currentHash, signature } = await generateRKSVSignature(
+  const { signature, hash } = await generateRKSVSignature(
     tenantId,
     closeDayTransaction,
-    'de' as Language
+    previousSignature
   );
 
-  await zReportsRef.add({
-      ...zReportData,
-      signature,
-      hash: currentHash,
-  });
+  // Z-Bericht-Dokument speichern
+  const zReportData = {
+    tenantId,
+    date: admin.firestore.Timestamp.now(),
+    totalSales: total,
+    transactionCount: transactionsSnap.size,
+    signature,
+    hash,
+    status: "finalized",
+  };
 
+  await zReportsRef.add(zReportData);
 
   console.log(`Z-Bericht für ${tenantId} erfolgreich erstellt.`);
 }
