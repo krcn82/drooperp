@@ -2,32 +2,27 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-  
-    // Rule 1: Allow users to read their own mapping document to find their tenantId.
-    // This is the first step in the two-step authentication process.
+    
+    // Rule 1: Allow a user to read their own document in the 'users' collection.
+    // This is a secure lookup to get the user's tenantId.
     match /users/{userId} {
       allow read: if request.auth != null && request.auth.uid == userId;
     }
 
-    // Rule 2: Grant access to tenant data.
-    // This is a recursive rule that applies to the tenant document and all
-    // documents and subcollections within it (e.g., users, products, orders).
+    // Rule 2: Grant access to all documents and subcollections within a tenant
+    // only if the user's authenticated tenantId matches the tenantId in the path.
     match /tenants/{tenantId}/{document=**} {
-      // Access is granted if the user is authenticated and the 'tenantId' in their
-      // user mapping document (/users/{userId}) matches the 'tenantId' in the path.
       allow read, write: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
     }
-
-    // Global data, like subscription plans, can be read by any authenticated user.
-    match /global/plans/{planId} {
-        allow read: if request.auth != null;
+    
+    // Global collections that can be read by any authenticated user
+    match /global/{collectionId}/{document=**} {
+      allow read: if request.auth != null;
     }
     
-    // The mail collection is write-only for authenticated users to trigger emails.
-    // It should not be readable by clients.
-    match /mail/{mailId} {
-        allow read: if false;
-        allow write: if request.auth != null;
+    // Mail collection for the "Trigger Email" extension
+    match /mail/{documentId} {
+      allow create: if request.auth != null;
     }
   }
 }
