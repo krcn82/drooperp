@@ -158,6 +158,26 @@
             "vipTier": {
                 "type": "string",
                 "enum": ["none", "silver", "gold", "platinum"]
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "lastVisit": {
+                "type": "string",
+                "format": "date-time"
+            },
+            "visits": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "orderId": {"type": "string"},
+                        "total": {"type": "number"},
+                        "pointsEarned": {"type": "number"},
+                        "date": {"type": "string", "format": "date-time"}
+                    }
+                }
             }
         },
         "required": ["fullName"]
