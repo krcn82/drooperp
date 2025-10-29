@@ -38,25 +38,26 @@ export async function closeDay(tenantId: string): Promise<void> {
     total += t.data().totalAmount || 0;
   });
 
-  // Letzte Transaktion für Hash-Kette
-  const lastTransaction = transactionsSnap.docs[transactionsSnap.size - 1].data();
-  const previousSignature = lastTransaction.signature || "";
-
   // RKSV-konforme neue Signatur erzeugen
-  const { signature, hash } = await generateRKSVSignature(
+  const zReportPayload = {
+    date: new Date().toISOString(),
+    totalSales: total,
+    transactionCount: transactionsSnap.size
+  };
+  
+  const { signature, currentHash } = await generateRKSVSignature(
     tenantId,
-    total,
-    previousSignature
+    zReportPayload,
+    'de'
   );
 
   // Z-Bericht-Dokument speichern
   const zReportData = {
+    ...zReportPayload,
     tenantId,
     date: admin.firestore.Timestamp.now(),
-    totalSales: total,
-    transactionCount: transactionsSnap.size,
     signature,
-    hash,
+    hash: currentHash,
     status: "finalized",
   };
 
