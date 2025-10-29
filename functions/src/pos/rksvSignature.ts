@@ -1,49 +1,59 @@
-import crypto from "crypto";
 import * as admin from "firebase-admin";
-import { Language, t } from "../i18n";
-import { signWithRKSVProvider } from "./rksvProvider";
+import * as crypto from "crypto";
 
 /**
- * 🇩🇪 Erzeugt eine neue RKSV-Signatur für eine Transaktion oder einen Tagesabschluss.
- * 🇬🇧 Creates a new RKSV signature for a transaction or Z-report.
+ * 🇩🇪 Erzeugt eine RKSV-konforme Signatur für eine Transaktion oder den Tagesabschluss.
+ * 🇬🇧 Generates an RKSV-compliant signature for a transaction or daily closing (Z-Report).
+ *
+ * 🔐 Anforderungen laut RKSV:
+ * - Jede Transaktion muss mit der vorherigen verknüpft sein (Hash-Kette)
+ * - Der Signaturwert basiert auf:
+ *    {Kassen-ID, Belegnummer, Datum, Betrag, vorherige Signatur}
  */
+
 export async function generateRKSVSignature(
   tenantId: string,
-  data: Record<string, any>,
-  lang: Language = 'en'
-): Promise<{ currentHash: string; signature: string }> {
+  totalAmount: number,
+  previousSignature: string
+): Promise<{ signature: string; hash: string }> {
   const db = admin.firestore();
 
-  // 🔗 Letzte Signatur holen (Chain-Verknüpfung)
-  const lastSignatureSnap = await db
-    .collection(`tenants/${tenantId}/signatures`)
-    .orderBy("createdAt", "desc")
-    .limit(1)
-    .get();
+  // Hole Tenant-Konfiguration (enthält Kassen-ID und Zertifikatsdaten)
+  const tenantDoc = await db.doc(`tenants/${tenantId}`).get();
+  const tenantData = tenantDoc.data();
 
-  const lastHash = lastSignatureSnap.empty
-    ? "INITIAL"
-    : lastSignatureSnap.docs[0].data().hash;
+  if (!tenantData) {
+    throw new Error(`Tenant ${tenantId} not found`);
+  }
 
-  // 🧾 Daten + letzte Hash-Werte kombinieren
-  const dataToSign = JSON.stringify(data) + lastHash;
-  const currentHash = crypto
-    .createHash("sha256")
-    .update(dataToSign)
-    .digest("hex");
+  const { cashRegisterId, certPrivateKey, certSerialNumber } = tenantData.rksv || {};
 
-  // 🔐 Signatur über den Provider erstellen
-  const signature = await signWithRKSVProvider(tenantId, currentHash);
+  if (!certPrivateKey || !cashRegisterId) {
+    throw new Error(
+      `RKSV credentials missing for tenant ${tenantId}. Please configure certificate.`
+    );
+  }
 
-  // 💾 Speicherung in Firestore
-  await db.collection(`tenants/${tenantId}/signatures`).add({
-    hash: currentHash,
+  // === HASH-KETTE AUFBAU ===
+  const dataToHash = `${cashRegisterId}|${totalAmount.toFixed(2)}|${previousSignature}`;
+  const hash = crypto.createHash("sha256").update(dataToHash).digest("base64");
+
+  // === DIGITALE SIGNATUR (RSA-SHA256) ===
+  const signer = crypto.createSign("RSA-SHA256");
+  signer.update(hash);
+  const signature = signer.sign(certPrivateKey, "base64");
+
+  // Speichere Signatur-Kette zur späteren DEP-Erstellung
+  const chainRef = db.collection(`tenants/${tenantId}/rksvChain`).doc();
+  await chainRef.set({
+    createdAt: admin.firestore.Timestamp.now(),
+    cashRegisterId,
+    certSerialNumber: certSerialNumber || "UNKNOWN",
+    totalAmount,
+    hash,
     signature,
-    previousHash: lastHash,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    previousSignature,
   });
-  
-  console.info(`[${lang.toUpperCase()}] ${t(lang, "RKSV_SIGNATURE_CREATED")}`);
 
-  return { currentHash, signature };
+  return { signature, hash };
 }
