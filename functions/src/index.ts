@@ -42,4 +42,4 @@ export { sendDailySystemReport } from './sendDailySystemReport';
 
 export * from './pos';
 export { logError } from './lib/error-logging';
-
+export { createFinanzOnlineExport } from './pos/createFinanzOnlineExport';

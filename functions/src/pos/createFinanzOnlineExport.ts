@@ -1,83 +1,106 @@
+
 import * as admin from "firebase-admin";
-import * as xmlbuilder from "xmlbuilder2";
-import { onCall, HttpsError } from "firebase-functions/v2/https";
+import * as functions from "firebase-functions";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
+import * as xmlbuilder from "xmlbuilder";
+
+if (!admin.apps.length) {
+  admin.initializeApp();
+}
 
 /**
- * 🇩🇪 Erstellt eine FinanzOnline-konforme RKSV-DEP-Export-Datei (XML).
- * 🇬🇧 Creates a FinanzOnline-compliant RKSV DEP export file (XML).
+ * 🇩🇪 Erzeugt einen RKSV/FinanzOnline-kompatiblen DEP-Export (XML).
+ * 🇬🇧 Generates a FinanzOnline-compliant DEP export (XML format).
  */
-export const createFinanzOnlineExport = onCall(async (request) => {
-    const { tenantId, date } = request.data; // e.g., date = "2025-10-28"
-    const uid = request.auth?.uid;
+export const createFinanzOnlineExport = functions
+  .region("us-central1")
+  .https.onCall(async (data, context) => {
+    const { tenantId } = data;
 
-    if (!uid) {
-        throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
-    }
-    if (!tenantId || !date) {
-        throw new HttpsError('invalid-argument', 'tenantId and date are required.');
+    if (!tenantId) {
+      throw new functions.https.HttpsError("invalid-argument", "Missing tenantId");
     }
 
     const db = admin.firestore();
-    const zReportRef = db.collection(`tenants/${tenantId}/zReports`);
-    const transactionsRef = db.collection(`tenants/${tenantId}/transactions`);
-    const kassenId = (await db.doc(`tenants/${tenantId}/rksvConfig`).get()).data()?.kassenId;
 
-    // 📅 Aktuellen Tagesabschluss abrufen
-    const zReportSnap = await zReportRef.where("date", "==", date).limit(1).get();
-    if (zReportSnap.empty) {
-        throw new HttpsError('not-found', `Kein Z-Bericht für ${date} gefunden.`);
+    const tenantDoc = await db.doc(`tenants/${tenantId}`).get();
+    if (!tenantDoc.exists) {
+      throw new functions.https.HttpsError("not-found", `Tenant ${tenantId} not found`);
     }
-    const zReport = zReportSnap.docs[0].data();
 
-    // 💾 Transaktionen des Tages abrufen
-    const start = new Date(`${date}T00:00:00Z`);
-    const end = new Date(`${date}T23:59:59Z`);
-    const transactionsSnap = await transactionsRef
-        .where("createdAt", ">=", start)
-        .where("createdAt", "<=", end)
-        .get();
+    const tenantData = tenantDoc.data();
+    const { cashRegisterId, certSerialNumber } = tenantData?.rksv || {};
 
-    // 🧾 DEP XML-Struktur aufbauen
-    const root = xmlbuilder.create({ version: "1.0", encoding: "UTF-8" }).ele("DataCollection");
+    if (!cashRegisterId || !certSerialNumber) {
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "RKSV credentials missing."
+      );
+    }
 
-    root.ele("Header", {
-        KassenId: kassenId || "UNKNOWN",
-        Datum: zReport.date,
-        Anzahl_Transaktionen: transactionsSnap.size,
-        Betrag_Brutto: zReport.totalAmount.toFixed(2),
-        Signatur: zReport.rksvSignature,
+    // 🔹 Hole alle Signatur-Einträge
+    const chainSnap = await db
+      .collection(`tenants/${tenantId}/rksvChain`)
+      .orderBy("createdAt")
+      .get();
+
+    // 🔹 Hole alle Z-Berichte
+    const zReportsSnap = await db
+      .collection(`tenants/${tenantId}/zReports`)
+      .orderBy("date")
+      .get();
+
+    // === XML Aufbau ===
+    const dep = xmlbuilder
+      .create("Datenerfassungsprotokoll", { encoding: "UTF-8" })
+      .att("xmlns", "http://finanzonline.bmf.gv.at/rksv/dep");
+
+    const header = dep.ele("Header");
+    header.ele("KassenID", cashRegisterId);
+    header.ele("ZertifikatSeriennummer", certSerialNumber);
+    header.ele("ExportDatum", new Date().toISOString());
+
+    const sigChain = dep.ele("Signaturkette");
+    chainSnap.forEach((doc) => {
+      const d = doc.data();
+      const entry = sigChain.ele("Beleg");
+      entry.ele("Datum", d.createdAt.toDate().toISOString());
+      entry.ele("Betrag", d.totalAmount.toFixed(2));
+      entry.ele("Hash", d.hash);
+      entry.ele("Signatur", d.signature);
+      entry.ele("VorherigeSignatur", d.previousSignature);
     });
 
-    const txList = root.ele("Transactions");
-
-    transactionsSnap.forEach((doc) => {
-        const t = doc.data();
-        txList.ele("Transaction", {
-            id: doc.id,
-            Belegnummer: doc.id,
-            Timestamp: t.createdAt?.toDate().toISOString() || "",
-            Betrag_Brutto: t.totalAmount?.toFixed(2) || 0,
-            Signatur: t.rksvSignature || "",
-            Hash: t.rksvHash || "",
-        });
+    const reports = dep.ele("ZBerichte");
+    zReportsSnap.forEach((doc) => {
+      const r = doc.data();
+      const entry = reports.ele("ZBericht");
+      entry.ele("Datum", r.date.toDate().toISOString());
+      entry.ele("Umsatz", r.totalSales.toFixed(2));
+      entry.ele("Transaktionen", r.transactionCount);
+      entry.ele("Hash", r.hash);
+      entry.ele("Signatur", r.signature);
     });
 
-    const xmlString = root.end({ prettyPrint: true });
+    // === XML generieren ===
+    const xmlContent = dep.end({ pretty: true });
 
-    // 📁 Speichern in Storage
+    // === Temporäre Datei speichern ===
+    const filePath = path.join(os.tmpdir(), `${tenantId}-DEP.xml`);
+    fs.writeFileSync(filePath, xmlContent);
+
+    console.log(`DEP Export für ${tenantId} erstellt: ${filePath}`);
+
+    // === Optional: Hochladen in Cloud Storage ===
     const bucket = admin.storage().bucket();
-    const fileName = `exports/${tenantId}/DEP-${date}.xml`;
-    const file = bucket.file(fileName);
-    
-    await file.save(xmlString, {
-      metadata: { contentType: "application/xml" },
-    });
+    const destination = `exports/${tenantId}/DEP-${Date.now()}.xml`;
 
-    // 🔗 Rückgabe (Download-URL)
-    const [url] = await file.getSignedUrl({
-        action: "read",
-        expires: Date.now() + 15 * 60 * 1000, // 15 minutes
-    });
+    await bucket.upload(filePath, { destination });
 
-    return { success: true, downloadUrl: url, xml: xmlString };
-});
+    return {
+      message: `DEP Export erfolgreich für ${tenantId}`,
+      storagePath: destination,
+    };
+  });
