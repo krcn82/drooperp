@@ -1,38 +1,22 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // Helper function to check if a user is a member of the tenant
-    function isTenantMember(tenantId) {
-      // The user must have a document in the global /users collection
-      // where the tenantId field matches the tenantId from the path.
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
-    }
-
-    // Allow a user to read their own tenant mapping document.
-    // This is the first step in the security process.
+    // A user can read their own user-to-tenant mapping document.
     match /users/{userId} {
       allow read: if request.auth != null && request.auth.uid == userId;
     }
-
-    // Protect all documents and subcollections within a tenant.
-    // The recursive wildcard {document=**} is crucial here.
+    
+    // A user can access any document inside their own tenant, but not other tenants.
+    // This is checked by getting the user's tenantId from the /users/{userId} document
+    // and comparing it to the tenantId in the path.
     match /tenants/{tenantId}/{document=**} {
-      allow read, write: if request.auth != null && isTenantMember(tenantId);
+      allow read, write: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
     }
-    
-    // Publicly readable collections (e.g., subscription plans)
-    match /global/{collection}/{docId} {
-        allow read: if true;
-        allow write: if false; // Nobody can write to global collections from the client
-    }
-    
-    // Mail trigger collection for the "Trigger Email" extension.
-    // Only allow authenticated users to create documents (send emails).
-    match /mail/{mailId} {
-        allow create: if request.auth != null;
-        allow read, update, delete: if false; // Only the extension should interact with documents
-    }
+
+    // Publicly readable collections, if any, would go here.
+    // Example:
+    // match /global/plans/{planId} {
+    //   allow read: if true;
+    // }
   }
 }
