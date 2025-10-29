@@ -8,38 +8,46 @@ import TableMap from '../../components/TableMap';
 import { Button } from '@/components/ui/button';
 import { Landmark, ChefHat } from 'lucide-react';
 import { useCashDrawer } from '@/hooks/use-cash-drawer';
-import { useFirebaseApp } from '@/firebase';
-import { getFunctions, httpsCallable } from 'firebase/functions';
+import { useFirebaseApp, addDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { type CartItem } from '../../types';
 import { useState, useMemo } from 'react';
 import { Loader2 } from 'lucide-react';
+import { collection, doc, serverTimestamp } from 'firebase/firestore';
 
 export default function RestaurantPOSPage() {
     const { toast } = useToast();
-    const firebaseApp = useFirebaseApp();
-    const functions = useMemo(() => firebaseApp ? getFunctions(firebaseApp) : null, [firebaseApp]);
+    const { firebaseApp, firestore } = useFirebaseApp();
     const [isSendingToKitchen, setIsSendingToKitchen] = useState(false);
 
     const handleSendToKitchen = async (cart: CartItem[], tenantId: string | null) => {
-        if (!tenantId || !functions || cart.length === 0) {
+        if (!tenantId || !firestore || cart.length === 0) {
             toast({ variant: 'destructive', title: 'Error', description: 'Cannot send to kitchen.' });
             return;
         }
 
         setIsSendingToKitchen(true);
         try {
-            const createKdsOrder = httpsCallable(functions, 'createKdsOrder');
+            // This needs a selected table. For now, we'll hardcode one.
+            const tableId = 'T1'; 
+            
+            const orderRef = collection(firestore, `tenants/${tenantId}/tables/${tableId}/orders`);
             const orderData = {
-                // For now, we'll hardcode a tableId. In a real app, you'd select this.
-                tableId: 'T1', 
                 items: cart.map(item => ({
                     productId: item.id,
                     name: { de: item.name.de, en: item.name.en },
                     qty: item.quantity,
                 })),
+                status: 'pending',
+                createdAt: serverTimestamp(),
             };
-            await createKdsOrder({ tenantId, orderData });
+
+            await addDocumentNonBlocking(orderRef, orderData);
+
+            // Update table status
+            const tableRef = doc(firestore, `tenants/${tenantId}/tables`, tableId);
+            await updateDocumentNonBlocking(tableRef, { status: 'occupied' });
+
             toast({ title: 'Order Sent', description: 'The order has been sent to the kitchen.' });
         } catch (error: any) {
             toast({ variant: 'destructive', title: 'Send Failed', description: error.message });

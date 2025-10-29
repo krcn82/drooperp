@@ -1,3 +1,4 @@
+
 {
   "entities": {
     "User": {
@@ -902,9 +903,9 @@
         "schema": { "$ref": "#/entities/Table" },
         "description": "Sub-collection for restaurant tables within a tenant."
     },
-    "/tenants/{tenantId}/kdsOrders/{kdsId}": {
-        "schema": { "$ref": "#/entities/KDSOrder" },
-        "description": "Sub-collection for Kitchen Display System orders within a tenant."
+    "/tenants/{tenantId}/tables/{tableId}/orders/{orderId}": {
+      "schema": { "$ref": "#/entities/KDSOrder" },
+      "description": "Sub-collection for kitchen orders within a specific table."
     },
     "/tenants/{tenantId}/users/{userId}": {
       "schema": {
