@@ -14,6 +14,7 @@ export async function closeDay(tenantId: string): Promise<void> {
   const db = admin.firestore();
   const transactionsRef = db.collection(`tenants/${tenantId}/transactions`);
   const zReportsRef = db.collection(`tenants/${tenantId}/zReports`);
+  const rksvChainRef = db.collection(`tenants/${tenantId}/rksvChain`);
 
   // Zeitraum: heutiger Tag (0:00 - 23:59)
   const start = new Date();
@@ -38,26 +39,25 @@ export async function closeDay(tenantId: string): Promise<void> {
     total += t.data().totalAmount || 0;
   });
 
+  // Get the last signature from the chain
+  const lastSignatureDoc = await rksvChainRef.orderBy("createdAt", "desc").limit(1).get();
+  const previousSignature = lastSignatureDoc.empty ? "INITIAL_SIGNATURE" : lastSignatureDoc.docs[0].data().signature;
+
   // RKSV-konforme neue Signatur erzeugen
-  const zReportPayload = {
-    date: new Date().toISOString(),
-    totalSales: total,
-    transactionCount: transactionsSnap.size
-  };
-  
-  const { signature, currentHash } = await generateRKSVSignature(
+  const { signature, hash } = await generateRKSVSignature(
     tenantId,
-    zReportPayload,
-    'de'
+    total,
+    previousSignature
   );
 
   // Z-Bericht-Dokument speichern
   const zReportData = {
-    ...zReportPayload,
     tenantId,
     date: admin.firestore.Timestamp.now(),
+    totalSales: total,
+    transactionCount: transactionsSnap.size,
     signature,
-    hash: currentHash,
+    hash,
     status: "finalized",
   };
 
