@@ -1,3 +1,4 @@
+
 /**
  * Initializes Firebase Admin SDK and exports all Cloud Functions.
  * This file acts as the main entry point for deploying functions.
@@ -24,7 +25,7 @@ export { processStripePayment, stripeWebhook } from './stripe';
 export { startDevicePayment, paymentDeviceCallback } from './paymentDevice';
 
 // Restaurant & POS
-export { createKdsOrder, updateKdsOrderStatus, onKdsOrderUpdate } from './restaurant';
+export { onKdsOrderUpdate } from './restaurant';
 export { recordTransaction } from './recordTransaction';
 export { syncOfflineTransactions } from './syncOfflineTransactions';
 
@@ -36,10 +37,14 @@ export { syncMenuWithPlatform } from './syncMenu';
 // Notifications
 export { onNotificationCreate } from './sendNotificationAlert';
 
+// Loyalty
+export { updateLoyaltyPoints, getCustomerLoyalty } from './loyalty';
+
 // Monitoring and email are helpers, not exported as functions
 export { sendDailySystemReport } from './sendDailySystemReport';
 // export { logFunctionExecution } from './functions-monitor';
 // export { sendEmailNotification } from './email-notifications';
 
 export { logError } from './lib/error-logging';
-export { dailyScheduler } from './pos/dailyScheduler';
+export { createFinanzOnlineExport } from './pos/createFinanzOnlineExport';
+

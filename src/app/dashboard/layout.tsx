@@ -17,6 +17,7 @@ import {
   Contact,
   Utensils,
   Bell,
+  Heart,
 } from 'lucide-react';
 import {usePathname, useRouter} from 'next/navigation';
 import {Button} from '@/components/ui/button';
@@ -40,6 +41,7 @@ const allNavItems = [
   {id: 'kds', href: '/dashboard/pos/restaurant/kitchen', icon: CookingPot, label: 'Kitchen Display'},
   {id: 'reports', href: '/dashboard/reports', icon: LineChart, label: 'Reports'},
   {id: 'assets', href: '/dashboard/assets', icon: FileUp, label: 'Invoices & Assets'},
+  {id: 'loyalty', href: '/dashboard/loyalty', icon: Heart, label: 'Loyalty'},
   {id: 'datev-export', href: '/dashboard/datev-export', icon: FileDown, label: 'DATEV Export'},
   {id: 'calendar', href: '/dashboard/calendar', icon: Calendar, label: 'Calendar', disabled: true},
   {id: 'kiosk', href: '/kiosk', icon: Contact, label: 'Kiosk', disabled: true },
@@ -110,11 +112,11 @@ export default function DashboardLayout({children}: {children: React.ReactNode})
   const unreadCount = unreadNotifications?.length || 0;
   
   const navItems = useMemo(() => {
-    if (areModulesLoading || !moduleSettings) return allNavItems.filter(item => ['dashboard', 'reports', 'assets', 'datev-export', 'gdpr', 'settings'].includes(item.id)); // show core items while loading
+    if (areModulesLoading || !moduleSettings) return allNavItems.filter(item => !['pos', 'kds', 'calendar', 'kiosk'].includes(item.id)); // show core items while loading
     
     let items = allNavItems;
     
-    const visibleItems = new Set(['dashboard', 'reports', 'assets', 'datev-export', 'gdpr', 'settings']);
+    const visibleItems = new Set(['dashboard', 'reports', 'assets', 'datev-export', 'gdpr', 'settings', 'loyalty']);
     
     if (moduleSettings.posShop || moduleSettings.posRestaurant) visibleItems.add('pos');
     if (moduleSettings.posRestaurant) visibleItems.add('kds');
