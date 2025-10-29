@@ -86,7 +86,8 @@ export async function registerTenant(prevState: State, formData: FormData): Prom
   };
   setDocumentNonBlocking(userRef, userData, {});
     
-  // 4. Create the mapping in the top-level users collection for security rules
+  // 4. Create the mapping in the top-level users collection for security rules.
+  // This is the crucial step for the `isTenantMember` rule to work.
   const userTenantMappingRef = doc(firestore, 'users', user.uid);
   const userTenantData = { tenantId: tenantId };
   setDocumentNonBlocking(userTenantMappingRef, userTenantData, {});
