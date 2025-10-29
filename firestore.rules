@@ -2,29 +2,31 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Helper function to check if a user belongs to a specific tenant.
-    function isUserOfTenant(tenantId) {
-      // It checks the /users/{uid} document to see if the tenantId matches.
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
+
+    // Helper function to get the user's tenant ID from the global users collection.
+    function getUserTenantId() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId;
     }
 
-    // Rule 1: Secure the top-level 'users' collection.
-    // Users can read/write their own mapping document to know their tenant, but not others.
+    // Allow a user to read their own tenant mapping. This is the first step for all other rules.
     match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-    }
-    
-    // Rule 2: Secure all tenant data.
-    // A user can read or write any document or subcollection inside a tenant's path
-    // IF they are a user of that tenant (verified by the isUserOfTenant function).
-    match /tenants/{tenantId}/{document=**} {
-      allow read, write: if request.auth != null && isUserOfTenant(tenantId);
+      allow read: if request.auth.uid == userId;
     }
 
-    // Rule 3: Allow read access to global plans for all authenticated users.
+    // Allow any authenticated user to read the global plans.
     match /global/plans/{planId} {
-        allow read: if request.auth != null;
+      allow read: if request.auth != null;
+    }
+
+    // This single recursive rule grants access to a user for all documents
+    // within their own tenant.
+    match /tenants/{tenantId}/{document=**} {
+      allow read, write: if request.auth != null && getUserTenantId() == tenantId;
+    }
+
+    // Allow authenticated users to create mail documents for the email extension.
+    match /mail/{mailId} {
+        allow create: if request.auth != null;
     }
   }
 }
