@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useMemo } from "react";
-import { useUser, useFirestore } from "@/firebase";
+import { useUser, useFirestore } from "firebase";
 import { doc, getDoc } from "firebase/firestore";
 import RetailPOS from "./retail/cashier/page";
 import RestaurantPOS from "./restaurant/cashier/page";
