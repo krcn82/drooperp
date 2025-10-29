@@ -18,6 +18,42 @@ interface ProductGridProps {
   language: 'de' | 'en';
 }
 
+const defaultProducts: Product[] = [
+    {
+      id: 'pizza-margherita',
+      name: { de: 'Pizza Margherita', en: 'Margherita Pizza' },
+      price: 9.90,
+      unit: 'Stück',
+      categoryId: 'pizza',
+      imageUrl: 'https://picsum.photos/seed/pizza1/300/300',
+      taxRate: 0.1,
+      sku: 'PZ-MAR-01',
+      isAvailable: true,
+    },
+    {
+      id: 'pasta-carbonara',
+      name: { de: 'Pasta Carbonara', en: 'Pasta Carbonara' },
+      price: 11.50,
+      unit: 'Stück',
+      categoryId: 'pasta',
+      imageUrl: 'https://picsum.photos/seed/pasta1/300/300',
+      taxRate: 0.1,
+      sku: 'PA-CAR-01',
+      isAvailable: true,
+    },
+    {
+      id: 'cola-033',
+      name: { de: 'Cola 0.33L', en: 'Coke 0.33L' },
+      price: 2.90,
+      unit: 'Stück',
+      categoryId: 'drinks',
+      imageUrl: 'https://picsum.photos/seed/drink1/300/300',
+      taxRate: 0.2,
+      sku: 'DR-COL-01',
+      isAvailable: true,
+    },
+];
+
 export default function ProductGrid({ tenantId, categoryId, addToCart, language }: ProductGridProps) {
   const firestore = useFirestore();
   
@@ -25,15 +61,17 @@ export default function ProductGrid({ tenantId, categoryId, addToCart, language 
     if (!firestore || !tenantId) return null;
     
     let q: Query = collection(firestore, `tenants/${tenantId}/products`);
-
-    if (categoryId) {
-        q = query(q, where('categoryId', '==', categoryId));
-    }
     
-    return q;
-  }, [firestore, tenantId, categoryId]);
+    return q; // We query all and filter on the client for the default data case
+  }, [firestore, tenantId]);
 
-  const { data: products, isLoading } = useCollection<Product>(productsQuery);
+  const { data: productsFromDb, isLoading } = useCollection<Product>(productsQuery);
+
+  const products = !isLoading && productsFromDb && productsFromDb.length > 0 ? productsFromDb : defaultProducts;
+
+  const filteredProducts = categoryId 
+    ? products.filter(p => p.categoryId === categoryId)
+    : products;
 
   if (isLoading) {
     return (
@@ -55,7 +93,7 @@ export default function ProductGrid({ tenantId, categoryId, addToCart, language 
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-      {products?.map(p => (
+      {filteredProducts.map(p => (
         <Card
           key={p.id}
           onClick={() => p.isAvailable && addToCart(p)}
@@ -83,6 +121,11 @@ export default function ProductGrid({ tenantId, categoryId, addToCart, language 
           </CardContent>
         </Card>
       ))}
+      {!isLoading && filteredProducts.length === 0 && (
+        <div className="col-span-full text-center py-10 text-muted-foreground">
+            <p>No products found in this category.</p>
+        </div>
+      )}
     </div>
   );
 }

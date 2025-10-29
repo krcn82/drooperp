@@ -1,3 +1,4 @@
+
 'use client';
 
 import React from 'react';
@@ -15,6 +16,13 @@ interface CategoryTabsProps {
   language: 'de' | 'en';
 }
 
+const defaultCategories: Category[] = [
+    { id: 'pizza', name: { de: 'Pizza', en: 'Pizza' }, sort: 1, icon: 'pizza' },
+    { id: 'pasta', name: { de: 'Pasta', en: 'Pasta' }, sort: 2, icon: 'pasta' },
+    { id: 'drinks', name: { de: 'Getränke', en: 'Drinks' }, sort: 3, icon: 'drinks' },
+];
+
+
 export default function CategoryTabs({ tenantId, selectedCategory, setSelectedCategory, language }: CategoryTabsProps) {
   const firestore = useFirestore();
   
@@ -23,7 +31,9 @@ export default function CategoryTabs({ tenantId, selectedCategory, setSelectedCa
     return query(collection(firestore, `tenants/${tenantId}/categories`), orderBy('sort'));
   }, [firestore, tenantId]);
 
-  const { data: categories, isLoading } = useCollection<Category>(categoriesQuery);
+  const { data: categoriesFromDb, isLoading } = useCollection<Category>(categoriesQuery);
+
+  const categories = !isLoading && categoriesFromDb && categoriesFromDb.length > 0 ? categoriesFromDb : defaultCategories;
 
   if (isLoading) {
     return (
