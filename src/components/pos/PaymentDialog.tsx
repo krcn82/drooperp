@@ -152,7 +152,9 @@ export default function PaymentDialog({
                 orderId: transactionId,
                 totalAmount: finalAmount,
             });
-            toast({ title: 'Loyalty Updated', description: `Added ${loyaltyResult.data.pointsEarned} points.` });
+            if(loyaltyResult.data.pointsEarned > 0) {
+               toast({ title: 'Loyalty Updated', description: `Added ${loyaltyResult.data.pointsEarned} points.` });
+            }
         } catch (err: any) {
             toast({ variant: 'destructive', title: 'Loyalty Update Failed', description: err.message });
         }
