@@ -35,15 +35,15 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.processStripePayment = exports.generateZReport = exports.paymentDeviceCallback = exports.startDevicePayment = exports.recordTransaction = void 0;
 const admin = __importStar(require("firebase-admin"));
-const recordTransaction_1 = require("./recordTransaction");
+const recordTransaction_1 = require("../recordTransaction");
 Object.defineProperty(exports, "recordTransaction", { enumerable: true, get: function () { return recordTransaction_1.recordTransaction; } });
-const startDevicePayment_1 = require("./startDevicePayment");
-Object.defineProperty(exports, "startDevicePayment", { enumerable: true, get: function () { return startDevicePayment_1.startDevicePayment; } });
-const paymentDeviceCallback_1 = require("./paymentDeviceCallback");
-Object.defineProperty(exports, "paymentDeviceCallback", { enumerable: true, get: function () { return paymentDeviceCallback_1.paymentDeviceCallback; } });
+const paymentDevice_1 = require("../paymentDevice");
+Object.defineProperty(exports, "startDevicePayment", { enumerable: true, get: function () { return paymentDevice_1.startDevicePayment; } });
+const paymentDevice_2 = require("../paymentDevice");
+Object.defineProperty(exports, "paymentDeviceCallback", { enumerable: true, get: function () { return paymentDevice_2.paymentDeviceCallback; } });
 const generateZReport_1 = require("./generateZReport");
 Object.defineProperty(exports, "generateZReport", { enumerable: true, get: function () { return generateZReport_1.generateZReport; } });
-const stripe_1 = require("./stripe");
+const stripe_1 = require("../stripe");
 Object.defineProperty(exports, "processStripePayment", { enumerable: true, get: function () { return stripe_1.processStripePayment; } });
 if (!admin.apps.length) {
     admin.initializeApp();

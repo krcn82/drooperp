@@ -79,19 +79,19 @@ exports.generateZReport = (0, https_1.onCall)(async (request) => {
         const paymentMethodBreakdown = {};
         paymentsSnapshot.forEach(doc => {
             const payment = doc.data();
-            totalSales += payment.amount;
+            totalSales += payment.amount || 0;
             if (payment.method === 'cash') {
-                totalCashSales += payment.amount;
+                totalCashSales += payment.amount || 0;
             }
             if (paymentMethodBreakdown[payment.method]) {
                 paymentMethodBreakdown[payment.method].count++;
-                paymentMethodBreakdown[payment.method].total += payment.amount;
+                paymentMethodBreakdown[payment.method].total += payment.amount || 0;
             }
             else {
-                paymentMethodBreakdown[payment.method] = { count: 1, total: payment.amount };
+                paymentMethodBreakdown[payment.method] = { count: 1, total: payment.amount || 0 };
             }
         });
-        const closingBalance = registerData.openingBalance + totalCashSales;
+        const closingBalance = (registerData.openingBalance || 0) + totalCashSales;
         // 3. Update the cash register document
         await registerRef.update({
             status: 'closed',
@@ -116,7 +116,6 @@ exports.generateZReport = (0, https_1.onCall)(async (request) => {
             type: 'z-report',
             generatedAt: admin.firestore.FieldValue.serverTimestamp(),
             data: reportData,
-            // In a real app, you'd generate a PDF and store the URL here.
             fileUrl: null,
         });
         return { success: true, message: 'Z-Report generated successfully.' };
@@ -126,7 +125,7 @@ exports.generateZReport = (0, https_1.onCall)(async (request) => {
         if (error instanceof https_1.HttpsError) {
             throw error;
         }
-        throw new https_1.HttpsError('internal', 'An unexpected error occurred.', error.message);
+        throw new https_1.HttpsError('internal', 'An unexpected error occurred.', error?.message || String(error));
     }
 });
 //# sourceMappingURL=generateZReport.js.map

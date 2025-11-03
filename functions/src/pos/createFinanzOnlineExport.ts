@@ -1,10 +1,12 @@
 
 import * as admin from "firebase-admin";
-import * as functions from "firebase-functions";
+import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import * as xmlbuilder from "xmlbuilder";
+import type { CallableRequest } from 'firebase-functions/v2/https';
+import type { AnyData } from '../types';
+import { create } from 'xmlbuilder2';
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -14,27 +16,25 @@ if (!admin.apps.length) {
  * 🇩🇪 Erzeugt einen RKSV/FinanzOnline-kompatiblen DEP-Export (XML).
  * 🇬🇧 Generates a FinanzOnline-compliant DEP export (XML format).
  */
-export const createFinanzOnlineExport = functions
-  .region("us-central1")
-  .https.onCall(async (data, context) => {
-    const { tenantId } = data;
+export const createFinanzOnlineExport = onCall({ region: 'us-central1' }, async (request: CallableRequest<AnyData>) => {
+    const { tenantId } = request.data as { tenantId?: string };
 
     if (!tenantId) {
-      throw new functions.https.HttpsError("invalid-argument", "Missing tenantId");
+      throw new HttpsError("invalid-argument", "Missing tenantId");
     }
 
     const db = admin.firestore();
 
     const tenantDoc = await db.doc(`tenants/${tenantId}`).get();
     if (!tenantDoc.exists) {
-      throw new functions.https.HttpsError("not-found", `Tenant ${tenantId} not found`);
+      throw new HttpsError("not-found", `Tenant ${tenantId} not found`);
     }
 
     const tenantData = tenantDoc.data();
     const { cashRegisterId, certSerialNumber } = tenantData?.rksv || {};
 
     if (!cashRegisterId || !certSerialNumber) {
-      throw new functions.https.HttpsError(
+      throw new HttpsError(
         "failed-precondition",
         "RKSV credentials missing."
       );
@@ -53,39 +53,39 @@ export const createFinanzOnlineExport = functions
       .get();
 
     // === XML Aufbau ===
-    const dep = xmlbuilder
-      .create("Datenerfassungsprotokoll", { encoding: "UTF-8" })
-      .att("xmlns", "http://finanzonline.bmf.gv.at/rksv/dep");
+    const dep = create({ version: '1.0', encoding: 'UTF-8' })
+      .ele('Datenerfassungsprotokoll')
+      .att('xmlns', 'http://finanzonline.bmf.gv.at/rksv/dep');
 
-    const header = dep.ele("Header");
-    header.ele("KassenID", cashRegisterId);
-    header.ele("ZertifikatSeriennummer", certSerialNumber);
-    header.ele("ExportDatum", new Date().toISOString());
+    const header = dep.ele('Header');
+    header.ele('KassenID').txt(String(cashRegisterId));
+    header.ele('ZertifikatSeriennummer').txt(String(certSerialNumber));
+    header.ele('ExportDatum').txt(new Date().toISOString());
 
-    const sigChain = dep.ele("Signaturkette");
+    const sigChain = dep.ele('Signaturkette');
     chainSnap.forEach((doc) => {
-      const d = doc.data();
-      const entry = sigChain.ele("Beleg");
-      entry.ele("Datum", d.createdAt.toDate().toISOString());
-      entry.ele("Betrag", d.totalAmount.toFixed(2));
-      entry.ele("Hash", d.hash);
-      entry.ele("Signatur", d.signature);
-      entry.ele("VorherigeSignatur", d.previousSignature);
+      const d = doc.data() as any;
+      const entry = sigChain.ele('Beleg');
+      entry.ele('Datum').txt(d.createdAt.toDate().toISOString());
+      entry.ele('Betrag').txt((d.totalAmount || 0).toFixed(2));
+      entry.ele('Hash').txt(d.hash);
+      entry.ele('Signatur').txt(d.signature);
+      entry.ele('VorherigeSignatur').txt(d.previousSignature);
     });
 
-    const reports = dep.ele("ZBerichte");
+    const reports = dep.ele('ZBerichte');
     zReportsSnap.forEach((doc) => {
-      const r = doc.data();
-      const entry = reports.ele("ZBericht");
-      entry.ele("Datum", r.date.toDate().toISOString());
-      entry.ele("Umsatz", r.totalSales.toFixed(2));
-      entry.ele("Transaktionen", r.transactionCount);
-      entry.ele("Hash", r.hash);
-      entry.ele("Signatur", r.signature);
+      const r = doc.data() as any;
+      const entry = reports.ele('ZBericht');
+      entry.ele('Datum').txt(r.date.toDate().toISOString());
+      entry.ele('Umsatz').txt((r.totalSales || 0).toFixed(2));
+      entry.ele('Transaktionen').txt(String(r.transactionCount || 0));
+      entry.ele('Hash').txt(r.hash);
+      entry.ele('Signatur').txt(r.signature);
     });
 
     // === XML generieren ===
-    const xmlContent = dep.end({ pretty: true });
+    const xmlContent = dep.end({ prettyPrint: true });
 
     // === Temporäre Datei speichern ===
     const filePath = path.join(os.tmpdir(), `${tenantId}-DEP.xml`);

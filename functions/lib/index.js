@@ -32,11 +32,8 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
-var __exportStar = (this && this.__exportStar) || function(m, exports) {
-    for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
-};
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.logError = exports.generateZReport = exports.sendDailySystemReport = exports.onNotificationCreate = exports.syncMenuWithPlatform = exports.syncIntegrationOrders = exports.integrationWebhook = exports.syncOfflineTransactions = exports.recordTransaction = exports.onKdsOrderUpdate = exports.updateKdsOrderStatus = exports.createKdsOrder = exports.paymentDeviceCallback = exports.startDevicePayment = exports.stripeWebhook = exports.processStripePayment = exports.generateReport = exports.generateDatevExport = exports.automationWorker = exports.aiAutomationWorker = void 0;
+exports.myHandler = exports.createFinanzOnlineExport = exports.logError = exports.sendDailySystemReport = exports.updateLoyaltyPoints = exports.onNotificationCreate = exports.syncMenuWithPlatform = exports.syncIntegrationOrders = exports.integrationWebhook = exports.syncOfflineTransactions = exports.recordTransaction = exports.onKdsOrderUpdate = exports.paymentDeviceCallback = exports.startDevicePayment = exports.stripeWebhook = exports.processStripePayment = exports.generateZReport = exports.generateReport = exports.generateDatevExport = exports.automationWorker = exports.aiAutomationWorker = void 0;
 /**
  * Initializes Firebase Admin SDK and exports all Cloud Functions.
  * This file acts as the main entry point for deploying functions.
@@ -56,6 +53,8 @@ var generateDatevExport_1 = require("./generateDatevExport");
 Object.defineProperty(exports, "generateDatevExport", { enumerable: true, get: function () { return generateDatevExport_1.generateDatevExport; } });
 var generateReport_1 = require("./generateReport");
 Object.defineProperty(exports, "generateReport", { enumerable: true, get: function () { return generateReport_1.generateReport; } });
+var generateZReport_1 = require("./generateZReport");
+Object.defineProperty(exports, "generateZReport", { enumerable: true, get: function () { return generateZReport_1.generateZReport; } });
 // Payment Processing
 var stripe_1 = require("./stripe");
 Object.defineProperty(exports, "processStripePayment", { enumerable: true, get: function () { return stripe_1.processStripePayment; } });
@@ -65,8 +64,6 @@ Object.defineProperty(exports, "startDevicePayment", { enumerable: true, get: fu
 Object.defineProperty(exports, "paymentDeviceCallback", { enumerable: true, get: function () { return paymentDevice_1.paymentDeviceCallback; } });
 // Restaurant & POS
 var restaurant_1 = require("./restaurant");
-Object.defineProperty(exports, "createKdsOrder", { enumerable: true, get: function () { return restaurant_1.createKdsOrder; } });
-Object.defineProperty(exports, "updateKdsOrderStatus", { enumerable: true, get: function () { return restaurant_1.updateKdsOrderStatus; } });
 Object.defineProperty(exports, "onKdsOrderUpdate", { enumerable: true, get: function () { return restaurant_1.onKdsOrderUpdate; } });
 var recordTransaction_1 = require("./recordTransaction");
 Object.defineProperty(exports, "recordTransaction", { enumerable: true, get: function () { return recordTransaction_1.recordTransaction; } });
@@ -82,14 +79,18 @@ Object.defineProperty(exports, "syncMenuWithPlatform", { enumerable: true, get: 
 // Notifications
 var sendNotificationAlert_1 = require("./sendNotificationAlert");
 Object.defineProperty(exports, "onNotificationCreate", { enumerable: true, get: function () { return sendNotificationAlert_1.onNotificationCreate; } });
+// Loyalty
+var loyalty_1 = require("./loyalty");
+Object.defineProperty(exports, "updateLoyaltyPoints", { enumerable: true, get: function () { return loyalty_1.updateLoyaltyPoints; } });
 // Monitoring and email are helpers, not exported as functions
 var sendDailySystemReport_1 = require("./sendDailySystemReport");
 Object.defineProperty(exports, "sendDailySystemReport", { enumerable: true, get: function () { return sendDailySystemReport_1.sendDailySystemReport; } });
 // export { logFunctionExecution } from './functions-monitor';
 // export { sendEmailNotification } from './email-notifications';
-__exportStar(require("./pos"), exports);
-var generateZReport_1 = require("./pos/generateZReport");
-Object.defineProperty(exports, "generateZReport", { enumerable: true, get: function () { return generateZReport_1.generateZReport; } });
 var error_logging_1 = require("./lib/error-logging");
 Object.defineProperty(exports, "logError", { enumerable: true, get: function () { return error_logging_1.logError; } });
+var createFinanzOnlineExport_1 = require("./pos/createFinanzOnlineExport");
+Object.defineProperty(exports, "createFinanzOnlineExport", { enumerable: true, get: function () { return createFinanzOnlineExport_1.createFinanzOnlineExport; } });
+var myHandler_1 = require("./myHandler");
+Object.defineProperty(exports, "myHandler", { enumerable: true, get: function () { return myHandler_1.myHandler; } });
 //# sourceMappingURL=index.js.map

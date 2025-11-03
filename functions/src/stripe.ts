@@ -1,5 +1,7 @@
 
 import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
+import type { CallableRequest } from 'firebase-functions/v2/https';
+import type { AnyData } from './types';
 import * as admin from 'firebase-admin';
 import Stripe from 'stripe';
 
@@ -13,12 +15,12 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
 /**
  * Creates a Stripe PaymentIntent for a given transaction.
  */
-export const processStripePayment = onCall(async (request) => {
+export const processStripePayment = onCall(async (request: CallableRequest<AnyData>) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
   }
 
-  const { tenantId, transactionId, amount, currency } = request.data;
+  const { tenantId, transactionId, amount, currency } = request.data as { tenantId?: string; transactionId?: string; amount?: number; currency?: string };
   if (!tenantId || !transactionId || !amount || !currency) {
     throw new HttpsError('invalid-argument', 'Missing required data fields.');
   }
@@ -33,7 +35,7 @@ export const processStripePayment = onCall(async (request) => {
       metadata: {
         tenantId,
         transactionId,
-        paymentId: request.data.paymentId // The paymentId created on the client
+  paymentId: request.data.paymentId // The paymentId created on the client
       },
     });
 

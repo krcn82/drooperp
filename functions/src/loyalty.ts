@@ -1,13 +1,15 @@
 
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import * as admin from 'firebase-admin';
+import type { CallableRequest } from 'firebase-functions/v2/https';
+import type { AnyData } from './types';
 
 /**
  * Calculates and updates a customer's loyalty points and visit history after a purchase.
  * Formula: 1 point for every €10 spent.
  */
-export const updateLoyaltyPoints = onCall(async (request) => {
-    const { tenantId, customerId, orderId, totalAmount } = request.data;
+export const updateLoyaltyPoints = onCall(async (request: CallableRequest<AnyData>) => {
+    const { tenantId, customerId, orderId, totalAmount } = request.data as { tenantId?: string; customerId?: string; orderId?: string; totalAmount?: number };
     const uid = request.auth?.uid;
 
     if (!uid) {

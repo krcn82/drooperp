@@ -56,11 +56,11 @@ exports.recordTransaction = (0, https_1.onCall)({ region: "us-central1" }, async
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
     // 💬 2️⃣ RKSV imzası oluşturuluyor
-    const { currentHash, signature } = await (0, rksvSignature_1.generateRKSVSignature)(tenantId, transaction, lang);
+    const { hash, signature } = await (0, rksvSignature_1.generateRKSVSignature)(tenantId, transaction, lang);
     // 💬 3️⃣ İşleme RKSV verileri ekleniyor
     await transactionRef.update({
         rksvSignature: signature,
-        rksvHash: currentHash,
+        rksvHash: hash,
         rksvTimestamp: admin.firestore.FieldValue.serverTimestamp(),
     });
     console.info(`[${lang.toUpperCase()}] ${(0, i18n_1.t)(lang, "TRANSACTION_PROCESSED")}: ${transactionRef.id} for tenant ${tenantId}`);
@@ -68,7 +68,7 @@ exports.recordTransaction = (0, https_1.onCall)({ region: "us-central1" }, async
         status: "success",
         transactionId: transactionRef.id,
         rksvSignature: signature,
-        rksvHash: currentHash,
+        rksvHash: hash,
     };
 });
 //# sourceMappingURL=recordTransaction.js.map

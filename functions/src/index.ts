@@ -47,3 +47,4 @@ export { sendDailySystemReport } from './sendDailySystemReport';
 
 export { logError } from './lib/error-logging';
 export { createFinanzOnlineExport } from './pos/createFinanzOnlineExport';
+export { myHandler } from './myHandler';

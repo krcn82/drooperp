@@ -1,5 +1,5 @@
 import * as admin from "firebase-admin";
-import * as functions from "firebase-functions";
+import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { generateRKSVSignature } from "./rksvSignature";
 
 if (!admin.apps.length) {
@@ -78,11 +78,7 @@ export async function closeDay(tenantId: string): Promise<void> {
  * Cloud Function: Automatischer Tagesabschluss (jeden Tag um 23:59)
  * Cloud Function: Automatic end-of-day closing (every day at 23:59)
  */
-export const generateZReport = functions
-  .region("us-central1")
-  .pubsub.schedule("59 23 * * *")
-  .timeZone("Europe/Vienna")
-  .onRun(async () => {
+export const generateZReport = onSchedule({ schedule: '59 23 * * *', timeZone: 'Europe/Vienna' }, async () => {
     const db = admin.firestore();
     const tenantsSnap = await db.collection("tenants").get();
 
@@ -95,5 +91,4 @@ export const generateZReport = functions
       }
     }
 
-    return null;
   });

@@ -1,12 +1,14 @@
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import * as admin from 'firebase-admin';
+import type { CallableRequest } from 'firebase-functions/v2/https';
+import type { AnyData } from './types';
 
 /**
  * A callable function to sync a tenant's product menu with an external platform.
  * This is a placeholder for a future enhancement.
  */
-export const syncMenuWithPlatform = onCall(async (request) => {
-    const { tenantId, platform } = request.data;
+export const syncMenuWithPlatform = onCall(async (request: CallableRequest<AnyData>) => {
+    const { tenantId, platform } = request.data as { tenantId?: string; platform?: string };
     const uid = request.auth?.uid;
 
     if (!uid) {

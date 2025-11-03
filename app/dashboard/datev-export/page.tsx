@@ -1,13 +1,67 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { Button } from 'components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from 'components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Download, Loader2 } from 'lucide-react';
-import { useFirebaseApp, useUser } from 'firebase';
-import { getFunctions, httpsCallable } from 'firebase/functions';
-import { useToast } from 'hooks/use-toast';
+import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
+
+// ✅ Firebase v9+ modüler importlar
+import { initializeApp } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+
+// ✅ Firebase app yapılandırması
+const firebaseConfig = {
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+};
+
+const app = initializeApp(firebaseConfig);
+const functions = getFunctions(app);
+const auth = getAuth(app);
+
+export default function DatevExportPage() {
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(false);
+
+  // örnek kullanım (eski useUser yerine)
+  const user = auth.currentUser;
+
+  const handleExport = async () => {
+    try {
+      setLoading(true);
+      const exportFn = httpsCallable(functions, 'generateDatevExport');
+      const result = await exportFn();
+      toast({ title: 'Export erfolgreich', description: `Datev export abgeschlossen: ${format(new Date(), 'dd.MM.yyyy HH:mm')}` });
+      console.log('Export result:', result.data);
+    } catch (err: any) {
+      toast({ title: 'Fehler beim Export', description: err.message, variant: 'destructive' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Card className="max-w-lg mx-auto mt-10">
+      <CardHeader>
+        <CardTitle>Datev Export</CardTitle>
+        <CardDescription>Exportiere deine Buchhaltungsdaten im DATEV Format.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Button onClick={handleExport} disabled={loading}>
+          {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+          Export starten
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function DatevExportPage() {
   const [isLoading, setIsLoading] = useState(false);

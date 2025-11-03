@@ -1,5 +1,7 @@
 
 import { HttpsError, onCall } from "firebase-functions/v2/https";
+import type { CallableRequest } from 'firebase-functions/v2/https';
+import type { AnyData } from '../types';
 import * as admin from "firebase-admin";
 import { generateRKSVSignature } from "./rksvSignature";
 import { Language, t } from "../i18n";
@@ -9,7 +11,7 @@ if (!admin.apps.length) {
   admin.initializeApp();
 }
 
-export const recordTransaction = onCall({ region: "us-central1" }, async (request) => {
+export const recordTransaction = onCall({ region: "us-central1" }, async (request: CallableRequest<AnyData>) => {
   const { tenantId, transaction, lang = "en" } = request.data as { tenantId: string; transaction: any; lang: Language };
 
   if (!tenantId || !transaction) {
@@ -27,12 +29,12 @@ export const recordTransaction = onCall({ region: "us-central1" }, async (reques
   });
 
   // 💬 2️⃣ RKSV imzası oluşturuluyor
-  const { currentHash, signature } = await generateRKSVSignature(tenantId, transaction, lang);
+  const { hash, signature } = await generateRKSVSignature(tenantId, transaction, lang);
 
   // 💬 3️⃣ İşleme RKSV verileri ekleniyor
   await transactionRef.update({
     rksvSignature: signature,
-    rksvHash: currentHash,
+    rksvHash: hash,
     rksvTimestamp: admin.firestore.FieldValue.serverTimestamp(),
   });
 
@@ -43,8 +45,8 @@ export const recordTransaction = onCall({ region: "us-central1" }, async (reques
   return {
     status: "success",
     transactionId: transactionRef.id,
-    rksvSignature: signature,
-    rksvHash: currentHash,
+  rksvSignature: signature,
+  rksvHash: hash,
   };
 });
 

@@ -1,0 +1,1 @@
+export { generateZReport } from '../generateZReport';

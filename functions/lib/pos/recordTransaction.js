@@ -36,51 +36,38 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.recordTransaction = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const admin = __importStar(require("firebase-admin"));
-/**
- * POS Transaction kaydı oluşturur
- * - QR kod üretimi (dummy format)
- * - Firestore kaydı
- * - Tenant bazlı işlem izleme
- */
-exports.recordTransaction = (0, https_1.onCall)(async (request) => {
-    try {
-        // Kullanıcı doğrulama
-        if (!request.auth) {
-            throw new https_1.HttpsError("unauthenticated", "Bu işlemi gerçekleştirmek için giriş yapılmalıdır.");
-        }
-        const tenantId = request.data.tenantId;
-        const transactionData = request.data.transactionData;
-        if (!tenantId || !transactionData) {
-            throw new https_1.HttpsError("invalid-argument", "Eksik işlem verisi veya tenant ID.");
-        }
-        const { items, totalAmount, paymentMethod } = transactionData;
-        if (!items || !totalAmount || !paymentMethod) {
-            throw new https_1.HttpsError("invalid-argument", "İşlem verileri eksik: items, totalAmount, paymentMethod zorunludur.");
-        }
-        // Firestore'a işlem kaydı
-        const transactionRef = await admin.firestore()
-            .collection(`tenants/${tenantId}/transactions`)
-            .add({
-            ...transactionData,
-            timestamp: admin.firestore.FieldValue.serverTimestamp(),
-            createdBy: request.auth.uid,
-            status: "completed",
-        });
-        // Basit bir QR kod (örnek)
-        const qrCode = `POS-${tenantId}-${transactionRef.id}`;
-        console.info(`✅ Transaction ${transactionRef.id} processed successfully for tenant ${tenantId}.`);
-        return {
-            status: "success",
-            transactionId: transactionRef.id,
-            qrCode,
-        };
+const rksvSignature_1 = require("./rksvSignature");
+const i18n_1 = require("../i18n");
+if (!admin.apps.length) {
+    admin.initializeApp();
+}
+exports.recordTransaction = (0, https_1.onCall)({ region: "us-central1" }, async (request) => {
+    const { tenantId, transaction, lang = "en" } = request.data;
+    if (!tenantId || !transaction) {
+        throw new https_1.HttpsError("invalid-argument", "tenantId and transaction are required.");
     }
-    catch (error) {
-        console.error("❌ Transaction recording failed:", error);
-        if (error instanceof https_1.HttpsError) {
-            throw error;
-        }
-        throw new https_1.HttpsError("internal", `İşlem kaydı başarısız: ${error.message}`);
-    }
+    const db = admin.firestore();
+    const tenantRef = db.collection("tenants").doc(tenantId);
+    const transactionsRef = tenantRef.collection("transactions");
+    // 💬 1️⃣ İşlem Firestore’a kaydediliyor
+    const transactionRef = await transactionsRef.add({
+        ...transaction,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    // 💬 2️⃣ RKSV imzası oluşturuluyor
+    const { hash, signature } = await (0, rksvSignature_1.generateRKSVSignature)(tenantId, transaction, lang);
+    // 💬 3️⃣ İşleme RKSV verileri ekleniyor
+    await transactionRef.update({
+        rksvSignature: signature,
+        rksvHash: hash,
+        rksvTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    console.info(`[${lang.toUpperCase()}] ${(0, i18n_1.t)(lang, "TRANSACTION_PROCESSED")}: ${transactionRef.id} for tenant ${tenantId}`);
+    return {
+        status: "success",
+        transactionId: transactionRef.id,
+        rksvSignature: signature,
+        rksvHash: hash,
+    };
 });
 //# sourceMappingURL=recordTransaction.js.map
