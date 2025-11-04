@@ -121,4 +121,10 @@ You can automate deployments whenever you push code to your GitHub repository.
         *   Name the secret `FIREBASE_SERVICE_ACCOUNT`.
         *   Copy the entire content of the downloaded JSON file and paste it into the secret's value field.
 
+  *   **Create `FIREBASE_PROJECT` Secret (recommended):**
+    *   Add a repository secret named `FIREBASE_PROJECT` with your Firebase project id (e.g. `my-project-id`).
+    *   The `build_and_deploy.yml` workflow uses this secret to target the correct project when running `firebase deploy`.
+
+  Note: if you prefer the older token approach you can instead add a `FIREBASE_TOKEN` secret (value from `firebase login:ci`), but using a service account JSON is more secure and recommended for CI.
+
 Now, every time you push to the `main` branch, your application and functions will be automatically built and deployed to Firebase App Hosting.

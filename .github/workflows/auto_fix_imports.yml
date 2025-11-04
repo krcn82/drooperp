@@ -1,0 +1,46 @@
+name: Auto Fix Imports & Firebase Setup
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  autofix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Auto-fix common Next.js import issues
+        run: |
+          echo "🔧 Fixing known import path issues..."
+          find ./app -type f -name "*.tsx" -exec sed -i 's|"components/ui/|@/components/ui/|g' {} +
+          find ./app -type f -name "*.tsx" -exec sed -i 's|"hooks/|@/hooks/|g' {} +
+          echo "✅ Import path fixes applied."
+
+      - name: Fix Firebase v9 import syntax
+        run: |
+          echo "🔧 Checking for old firebase imports..."
+          find ./app -type f -name "*.tsx" -exec sed -i 's|from "firebase"|from "firebase/app"|g' {} +
+          echo "✅ Firebase imports normalized."
+
+      - name: Commit and push fixes
+        run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+          git add .
+          git commit -m "ci: auto-fix import paths and firebase imports" || echo "No changes to commit"
+          git push
+
+      - name: Re-run build
+        run: npm run build

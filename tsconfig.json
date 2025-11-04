@@ -18,7 +18,15 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "components/*": ["./components/*"],
+      "components": ["./components"],
+      "hooks/*": ["./hooks/*"],
+      "hooks": ["./hooks"],
+      "lib/*": ["./lib/*"],
+      "lib": ["./lib"],
+      "firebase/*": ["./firebase/*"],
+      "firebase": ["./firebase"]
     },
     "target": "es5"
   },
