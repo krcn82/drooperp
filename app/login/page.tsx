@@ -104,7 +104,7 @@ export default function LoginPage() {
         description: description,
       });
       localStorage.removeItem('tenantId'); // Clear tenantId on failure
-      form.reset({...values, password: ''});
+      form.reset(values);
     }
   };
 
